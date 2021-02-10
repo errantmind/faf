@@ -1,0 +1,7 @@
+/target
+/docs
+/.vscode
+/prof
+/tests
+/src/scratch.rs
+/benches

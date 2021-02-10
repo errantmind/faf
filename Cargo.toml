@@ -1,0 +1,10 @@
+[package]
+name = "faf"
+version = "0.4.0"
+authors = ["James Bates <errantmind@protonmail.com>"]
+edition = "2021"
+
+[features]
+default = []
+
+[dependencies]
