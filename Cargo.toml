@@ -1,0 +1,26 @@
+[package]
+name = "faf-web-server"
+version = "0.1.0"
+authors = ["James Bates <jmbates@gmail.com>"]
+edition = "2018"
+
+[build]
+rustflags = ["-C", "target-cpu=native"]
+
+[profile.release]
+opt-level = 3
+debug = false
+debug-assertions = false
+overflow-checks = false
+panic = 'unwind'
+#incremental = false
+incremental = true
+#codegen-units = 1
+#lto = true
+codegen-units = 16
+lto = false
+rpath = false
+[dependencies]
+
+# Better allocator. Pretty fucking amazing, made by Microsoft. Works on Windows and Linux. Keep this
+mimalloc = { version = "*", default-features = false }
