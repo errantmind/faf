@@ -2,3 +2,5 @@
 /docs
 /.vscode
 /prof
+/tests
+/src/scratch.rs
