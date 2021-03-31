@@ -1,7 +1,8 @@
-use crate::epoll_callback;
 use crate::const_config::*;
-use crate::listener;
 use crate::const_sys::*;
+//use crate::epoll_callback;
+use crate::likely;
+use crate::listener;
 use sys_call::sys_call;
 
 #[repr(C)]
@@ -17,12 +18,19 @@ pub struct epoll_event {
    pub data: epoll_data,
 }
 
-pub const EPOLL_CTL_ADD: i32 = 1;
-pub const EPOLL_CTL_DEL: i32 = 2;
-pub const EPOLLIN: u32 = 0x1;
-
 #[inline]
-pub fn go(port: u16) {
+pub fn go(
+   port: u16,
+   cb: fn(
+      *const i8,
+      usize,
+      *const i8,
+      usize,
+      &[faf_pico_sys::phr_header; MAX_HEADERS_TO_PARSE],
+      usize,
+      &mut [u8; REQ_RES_BUFF_SIZE],
+   ) -> usize,
+) {
    let num_cpu_cores = num_cpus::get();
 
    let (listener_fd, _, _) = listener::get_listener_fd(port);
@@ -85,7 +93,7 @@ pub fn go(port: u16) {
    (0..num_cpu_cores).for_each(|worker_index| {
       let epfd = worker_epfds[worker_index];
       std::thread::spawn(move || {
-         worker(epfd);
+         worker(epfd, cb);
       });
    });
 
@@ -125,7 +133,7 @@ pub fn go(port: u16) {
                      worker_epfds[core_affin],
                      EPOLL_CTL_ADD as isize,
                      incoming_fd as isize,
-                     saved_event as *const epoll_event as isize
+                     saved_event as *mut epoll_event as isize
                   )
                };
 
@@ -140,7 +148,18 @@ pub fn go(port: u16) {
 }
 
 #[inline]
-fn worker(epfd: isize) {
+fn worker(
+   epfd: isize,
+   cb: fn(
+      *const i8,
+      usize,
+      *const i8,
+      usize,
+      &[faf_pico_sys::phr_header; MAX_HEADERS_TO_PARSE],
+      usize,
+      &mut [u8; REQ_RES_BUFF_SIZE],
+   ) -> usize,
+) {
    let mut ep_events: [epoll_event; MAX_EPOLL_EVENTS_RETURNED] = unsafe { std::mem::zeroed() };
    let ep_events_ptr = &ep_events as *const _ as isize;
    let mut headers_buff: [faf_pico_sys::phr_header; MAX_HEADERS_TO_PARSE] = unsafe { std::mem::zeroed() };
@@ -200,19 +219,25 @@ fn worker(epfd: isize) {
                )
             };
 
-            if ret != len_read as i32 {
-               unsafe { close_connection(epfd, cur_fd as isize) };
-            }
+            if likely!(ret == len_read as i32) {
+               let response_buffer_filled =
+                  cb(method, method_len, path, path_len, &headers_buff, headers_len, &mut response_buffer);
 
-            let response_buffer_filled =
-               epoll_callback::cb(method, method_len, path, path_len, &headers_buff, headers_len, &mut response_buffer);
+               if likely!(response_buffer_filled > 0) {
+                  let wrote = unsafe {
+                     sys_call!(
+                        SYS_WRITE as isize,
+                        cur_fd as isize,
+                        response_buffer_ptr,
+                        response_buffer_filled as isize
+                     )
+                  };
 
-            if response_buffer_filled > 0 {
-               let wrote = unsafe {
-                  sys_call!(SYS_WRITE as isize, cur_fd as isize, response_buffer_ptr, response_buffer_filled as isize)
-               };
-
-               if wrote != response_buffer_filled as isize {
+                  if likely!(wrote == response_buffer_filled as isize) {
+                  } else {
+                     unsafe { close_connection(epfd, cur_fd as isize) };
+                  }
+               } else {
                   unsafe { close_connection(epfd, cur_fd as isize) };
                }
             } else {

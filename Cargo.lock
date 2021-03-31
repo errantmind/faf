@@ -13,7 +13,6 @@ name = "faf"
 version = "0.1.0"
 dependencies = [
  "faf-pico-sys",
- "mimalloc",
  "num_cpus",
  "sys-call",
 ]
@@ -40,24 +39,6 @@ name = "libc"
 version = "0.2.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8916b1f6ca17130ec6568feccee27c156ad12037880833a3b842a823236502e7"
-
-[[package]]
-name = "libmimalloc-sys"
-version = "0.1.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2396cf99d2f58611cd69f0efeee4af3d2e2c7b61bed433515029163aa567e65c"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "mimalloc"
-version = "0.1.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e7c6b11afd1e5e689ac96b6d18b1fc763398fe3d7eed99e8773426bc2033dfb"
-dependencies = [
- "libmimalloc-sys",
-]
 
 [[package]]
 name = "num_cpus"

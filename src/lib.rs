@@ -1,18 +1,17 @@
 #![allow(clippy::missing_safety_doc)]
-#![feature(const_fn, const_fn_union, const_raw_ptr_deref, const_size_of_val)]
+#![allow(clippy::type_complexity)]
+#![feature(const_fn, const_fn_union, const_raw_ptr_deref, const_size_of_val, core_intrinsics)]
 
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-mod epoll;
-mod epoll_callback;
-mod const_config;
-mod extern_http_date;
-mod const_http;
-mod http_content_length;
-mod listener;
+pub mod const_config;
+pub mod const_http;
 mod const_sys;
-mod util;
+pub mod epoll;
+pub mod extern_http_date;
+pub mod http_content_length;
+mod listener;
+pub mod util;
+
+pub use faf_pico_sys::phr_header;
 
 #[macro_export]
 macro_rules! const_concat_bytes {
@@ -42,7 +41,21 @@ macro_rules! const_concat_bytes {
     };
 }
 
-#[inline]
-fn main() {
-   epoll::go(8089);
+#[macro_export]
+macro_rules! likely {
+   ($expr: expr) => {
+      std::intrinsics::likely($expr)
+   };
 }
+
+#[macro_export]
+macro_rules! unlikely {
+   ($expr: expr) => {
+      std::intrinsics::unlikely($expr)
+   };
+}
+
+// #[inline]
+// fn main() {
+//    epoll::go(8089);
+// }

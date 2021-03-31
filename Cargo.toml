@@ -14,11 +14,11 @@ panic = 'unwind'
 codegen-units = 1
 lto = "thin"
 debug = false
+#rpath = false
 overflow-checks = false
 
 
 [dependencies]
-mimalloc = { version = "*", default-features = false }
 faf-pico-sys = { git = "https://github.com/errantmind/faf-pico-sys" }
 sys-call = { git = "https://github.com/errantmind/sys-call-rs" }
 num_cpus = "*"

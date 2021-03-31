@@ -5,6 +5,3 @@
 /tests
 /src/scratch.rs
 /benches
-/docker/faf-clearlinux.dockerfile
-/docker/fafv2.dockerfile
-/docker/fafv3.dockerfile
