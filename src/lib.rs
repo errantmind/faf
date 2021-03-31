@@ -54,8 +54,3 @@ macro_rules! unlikely {
       std::intrinsics::unlikely($expr)
    };
 }
-
-// #[inline]
-// fn main() {
-//    epoll::go(8089);
-// }

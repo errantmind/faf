@@ -1,8 +1,7 @@
 use crate::const_config::*;
 use crate::const_sys::*;
-//use crate::epoll_callback;
-use crate::likely;
 use crate::listener;
+use crate::{likely, unlikely};
 use sys_call::sys_call;
 
 #[repr(C)]
@@ -108,42 +107,40 @@ pub fn go(
          )
       };
 
-      if num_incoming_events == 0 {
-         continue;
-      }
+      if likely!(num_incoming_events > 0) {
+         (0..num_incoming_events).for_each(|index| {
+            let cur_event = &ep_events[index as usize];
+            let cur_fd = unsafe { cur_event.data.fd } as isize;
 
-      (0..num_incoming_events).for_each(|index| {
-         let cur_event = &ep_events[index as usize];
-         let cur_fd = unsafe { cur_event.data.fd } as isize;
+            if likely!(cur_fd == listener_fd as isize) {
+               let incoming_fd = unsafe { sys_call!(SYS_ACCEPT as isize, listener_fd as isize, 0, 0) } as isize;
 
-         if cur_fd == listener_fd as isize {
-            let incoming_fd = unsafe { sys_call!(SYS_ACCEPT as isize, listener_fd as isize, 0, 0) } as isize;
+               if likely!(incoming_fd >= 0) {
+                  let core_affin = incoming_fd as usize % num_cpu_cores;
+                  listener::setup_client_connection(incoming_fd, core_affin as i32);
+                  let saved_event = &mut ep_events_conections[incoming_fd as usize];
+                  saved_event.data.uint64_t = 0;
+                  saved_event.data.fd = incoming_fd as i32;
+                  saved_event.events = EPOLLIN;
 
-            if incoming_fd >= 0 {
-               let core_affin = incoming_fd as usize % num_cpu_cores;
-               listener::setup_client_connection(incoming_fd, core_affin as i32);
-               let saved_event = &mut ep_events_conections[incoming_fd as usize];
-               saved_event.data.uint64_t = 0;
-               saved_event.data.fd = incoming_fd as i32;
-               saved_event.events = EPOLLIN;
+                  let _ret = unsafe {
+                     sys_call!(
+                        SYS_EPOLL_CTL as isize,
+                        worker_epfds[core_affin],
+                        EPOLL_CTL_ADD as isize,
+                        incoming_fd as isize,
+                        saved_event as *mut epoll_event as isize
+                     )
+                  };
 
-               let _ret = unsafe {
-                  sys_call!(
-                     SYS_EPOLL_CTL as isize,
-                     worker_epfds[core_affin],
-                     EPOLL_CTL_ADD as isize,
-                     incoming_fd as isize,
-                     saved_event as *mut epoll_event as isize
-                  )
-               };
-
-               #[cfg(feature = "faf_debug")]
-               if _ret < 0 {
-                  panic!("failed to add incoming fd to epoll instance");
+                  #[cfg(feature = "faf_debug")]
+                  if _ret < 0 {
+                     panic!("failed to add incoming fd to epoll instance");
+                  }
                }
             }
-         }
-      });
+         });
+      }
    }
 }
 
@@ -181,66 +178,63 @@ fn worker(
          )
       };
 
-      if num_incoming_events == 0 {
-         continue;
-      }
+      if likely!(num_incoming_events != 0) {
+         for index in 0..num_incoming_events {
+            let cur_event = &mut ep_events[index as usize];
+            let cur_fd = unsafe { cur_event.data.fd } as i32;
 
-      for index in 0..num_incoming_events {
-         let cur_event = &mut ep_events[index as usize];
-         let cur_fd = unsafe { cur_event.data.fd } as i32;
+            let len_read = unsafe { sys_call!(SYS_READ as isize, cur_fd as isize, request_buffer_ptr, 1024) };
 
-         let len_read = unsafe { sys_call!(SYS_READ as isize, cur_fd as isize, request_buffer_ptr, 1024) };
+            if likely!(len_read > 0) {
+               let mut method: *const i8 = std::ptr::null_mut();
+               let mut method_len = 0;
+               let mut path: *const i8 = std::ptr::null_mut();
+               let mut path_len = 0;
+               let mut minor_version = 0;
+               let mut headers_len = MAX_HEADERS_TO_PARSE;
+               let prev_buf_len = 0;
 
-         if -len_read == EAGAIN as isize || -len_read == EINTR as isize {
-            continue;
-         } else if len_read <= 0 {
-            unsafe { close_connection(epfd, cur_fd as isize) };
-         } else {
-            let mut method: *const i8 = std::ptr::null_mut();
-            let mut method_len = 0;
-            let mut path: *const i8 = std::ptr::null_mut();
-            let mut path_len = 0;
-            let mut minor_version = 0;
-            let mut headers_len = MAX_HEADERS_TO_PARSE;
-            let prev_buf_len = 0;
+               let ret = unsafe {
+                  faf_pico_sys::phr_parse_request(
+                     request_buffer_ptr as *const _,
+                     len_read as usize,
+                     &mut method,
+                     &mut method_len,
+                     &mut path,
+                     &mut path_len,
+                     &mut minor_version,
+                     headers_buff.as_mut_ptr(),
+                     &mut headers_len,
+                     prev_buf_len,
+                  )
+               };
 
-            let ret = unsafe {
-               faf_pico_sys::phr_parse_request(
-                  request_buffer_ptr as *const _,
-                  len_read as usize,
-                  &mut method,
-                  &mut method_len,
-                  &mut path,
-                  &mut path_len,
-                  &mut minor_version,
-                  headers_buff.as_mut_ptr(),
-                  &mut headers_len,
-                  prev_buf_len,
-               )
-            };
+               if likely!(ret == len_read as i32) {
+                  let response_buffer_filled =
+                     cb(method, method_len, path, path_len, &headers_buff, headers_len, &mut response_buffer);
 
-            if likely!(ret == len_read as i32) {
-               let response_buffer_filled =
-                  cb(method, method_len, path, path_len, &headers_buff, headers_len, &mut response_buffer);
+                  if likely!(response_buffer_filled > 0) {
+                     let wrote = unsafe {
+                        sys_call!(
+                           SYS_WRITE as isize,
+                           cur_fd as isize,
+                           response_buffer_ptr,
+                           response_buffer_filled as isize
+                        )
+                     };
 
-               if likely!(response_buffer_filled > 0) {
-                  let wrote = unsafe {
-                     sys_call!(
-                        SYS_WRITE as isize,
-                        cur_fd as isize,
-                        response_buffer_ptr,
-                        response_buffer_filled as isize
-                     )
-                  };
-
-                  if likely!(wrote == response_buffer_filled as isize) {
+                     if likely!(wrote == response_buffer_filled as isize) {
+                     } else {
+                        unsafe { close_connection(epfd, cur_fd as isize) };
+                     }
                   } else {
                      unsafe { close_connection(epfd, cur_fd as isize) };
                   }
                } else {
                   unsafe { close_connection(epfd, cur_fd as isize) };
                }
-            } else {
+            } else if unlikely!(-len_read == EAGAIN as isize || -len_read == EINTR as isize) {
+            } else if unlikely!(len_read <= 0) {
                unsafe { close_connection(epfd, cur_fd as isize) };
             }
          }

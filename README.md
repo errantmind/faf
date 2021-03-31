@@ -11,18 +11,17 @@ FaF requires:
 * [clang-12 and lld-12](https://apt.llvm.org/) to be installed and available in PATH. The version (i.e. 12) may change over time as Rust updates its LLVM version
 
 
-To use FaF for your own purposes, edit the callback in `epoll_callback.rs`
+To use FaF for your own purposes, provide a callback which modifies the response buffer. For more information, see the examples directory
 
-Build and run FaF with the following commands. Remove `-Cprofile-use=/faf/merged.profdata` below if you don't know how to use [PGO](https://doc.rust-lang.org/rustc/profile-guided-optimization.html) with Rust or have not generated and merged profiles for yourself. If you neglect this step the build will fail or you will have degraded performance. In my tests, PGO doesn't add all that much performance in this project (~1%) so you won't be missing out on much
+Build and run FaF with the following commands. Remove `-Cprofile-use=/faf/merged.profdata` below if you don't know how to use [PGO](https://doc.rust-lang.org/rustc/profile-guided-optimization.html) with Rust or have not generated and merged profiles for yourself. Change the absolute path if you do generate a profile. If you neglect this step the build will fail or you will have degraded performance. In my tests, PGO doesn't add all that much performance in this project (~2%) so you won't be missing out on much
 ```
-# Build (from FaF project directory):
+# Build (from FaF example project directory):
 RUSTFLAGS="-Ctarget-cpu=native -Clinker=/usr/bin/clang-12 -Clink-arg=-fuse-ld=lld-12 -Clink-arg=-flto=thin \
    -Clto=thin -Cembed-bitcode=yes -Copt-level=3 -Ccodegen-units=1 -Cforce-frame-pointers=n -Cprofile-use=/faf/merged.profdata" \
-   /root/.cargo/bin/cargo build --verbose --release -Z build-std --target=x86_64-unknown-linux-gnu \
-   && strip --strip-all target/x86_64-unknown-linux-gnu/release/faf
+   /root/.cargo/bin/cargo build --verbose --release && strip --strip-all target/release/faf-ex
 
 # Run
-./target/x86_64-unknown-linux-gnu/release/faf
+./target/release/faf-ex
 ```
 
 ## Design Principles
