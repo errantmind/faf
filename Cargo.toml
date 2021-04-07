@@ -8,14 +8,14 @@ edition = "2018"
 default = []
 faf_debug = []
 
-[profile.release]
-opt-level = 3
-panic = 'unwind'
-codegen-units = 1
-lto = "thin"
-debug = false
-#rpath = false
-overflow-checks = false
+# [profile.release]
+# opt-level = 3
+# panic = 'unwind'
+# codegen-units = 1
+# lto = "thin"
+# debug = false
+# #rpath = false
+# overflow-checks = false
 
 
 [dependencies]

@@ -2,6 +2,7 @@ use crate::const_config::*;
 use crate::const_sys::*;
 use crate::listener;
 use crate::{likely, unlikely};
+use std::ops::Add;
 use sys_call::sys_call;
 
 #[repr(C)]
@@ -86,7 +87,7 @@ pub fn go(
 
    #[cfg(feature = "faf_debug")]
    if _ret != 0 {
-      panic!("Failed on epoll_ctl(...) with err: {}", std::io::Error::from_raw_os_error(-ret as i32));
+      panic!("Failed on epoll_ctl(...) with err: {}", std::io::Error::from_raw_os_error(-_ret as i32));
    }
 
    (0..num_cpu_cores).for_each(|worker_index| {
@@ -183,9 +184,10 @@ fn worker(
             let cur_event = &mut ep_events[index as usize];
             let cur_fd = unsafe { cur_event.data.fd } as i32;
 
-            let len_read = unsafe { sys_call!(SYS_READ as isize, cur_fd as isize, request_buffer_ptr, 1024) };
+            let socket_len_read =
+               unsafe { sys_call!(SYS_READ as isize, cur_fd as isize, request_buffer_ptr, REQ_RES_BUFF_SIZE as isize) };
 
-            if likely!(len_read > 0) {
+            if likely!(socket_len_read > 0) {
                let mut method: *const i8 = std::ptr::null_mut();
                let mut method_len = 0;
                let mut path: *const i8 = std::ptr::null_mut();
@@ -194,47 +196,67 @@ fn worker(
                let mut headers_len = MAX_HEADERS_TO_PARSE;
                let prev_buf_len = 0;
 
-               let ret = unsafe {
-                  faf_pico_sys::phr_parse_request(
-                     request_buffer_ptr as *const _,
-                     len_read as usize,
-                     &mut method,
-                     &mut method_len,
-                     &mut path,
-                     &mut path_len,
-                     &mut minor_version,
-                     headers_buff.as_mut_ptr(),
-                     &mut headers_len,
-                     prev_buf_len,
-                  )
-               };
+               let mut bytes_parsed = 0;
+               while socket_len_read != bytes_parsed {
+                  let ret = unsafe {
+                     faf_pico_sys::phr_parse_request(
+                        request_buffer_ptr.add(bytes_parsed) as *const _,
+                        socket_len_read as usize,
+                        &mut method,
+                        &mut method_len,
+                        &mut path,
+                        &mut path_len,
+                        &mut minor_version,
+                        headers_buff.as_mut_ptr(),
+                        &mut headers_len,
+                        prev_buf_len,
+                     )
+                  };
 
-               if likely!(ret == len_read as i32) {
-                  let response_buffer_filled =
-                     cb(method, method_len, path, path_len, &headers_buff, headers_len, &mut response_buffer);
+                  bytes_parsed += ret as isize;
 
-                  if likely!(response_buffer_filled > 0) {
-                     let wrote = unsafe {
-                        sys_call!(
-                           SYS_WRITE as isize,
-                           cur_fd as isize,
-                           response_buffer_ptr,
-                           response_buffer_filled as isize
-                        )
-                     };
+                  if likely!(ret > 0) {
+                     let response_buffer_filled =
+                        cb(method, method_len, path, path_len, &headers_buff, headers_len, &mut response_buffer);
 
-                     if likely!(wrote == response_buffer_filled as isize) {
+                     if likely!(response_buffer_filled > 0) {
+                        let wrote = unsafe {
+                           sys_call!(
+                              SYS_WRITE as isize,
+                              cur_fd as isize,
+                              response_buffer_ptr,
+                              response_buffer_filled as isize
+                           )
+                        };
+
+                        if likely!(wrote == response_buffer_filled as isize) {
+                        } else {
+                           #[cfg(feature = "faf_debug")]
+                           {
+                              panic!("wrote != response_buffer_filled")
+                           }
+                           unsafe { close_connection(epfd, cur_fd as isize) };
+                           break;
+                        }
                      } else {
+                        #[cfg(feature = "faf_debug")]
+                        {
+                           panic!("response_buffer_filled <= 0")
+                        }
                         unsafe { close_connection(epfd, cur_fd as isize) };
+                        break;
                      }
                   } else {
+                     #[cfg(feature = "faf_debug")]
+                     {
+                        panic!("ret != socket_len_read")
+                     }
                      unsafe { close_connection(epfd, cur_fd as isize) };
+                     break;
                   }
-               } else {
-                  unsafe { close_connection(epfd, cur_fd as isize) };
                }
-            } else if unlikely!(-len_read == EAGAIN as isize || -len_read == EINTR as isize) {
-            } else if unlikely!(len_read <= 0) {
+            } else if unlikely!(-socket_len_read == EAGAIN as isize || -socket_len_read == EINTR as isize) {
+            } else if unlikely!(socket_len_read <= 0) {
                unsafe { close_connection(epfd, cur_fd as isize) };
             }
          }
