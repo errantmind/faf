@@ -28,7 +28,7 @@ pub fn go(
       usize,
       &[faf_pico_sys::phr_header; MAX_HEADERS_TO_PARSE],
       usize,
-      &mut [u8; REQ_RES_BUFF_SIZE],
+      *mut u8,
    ) -> usize,
 ) {
    let num_cpu_cores = num_cpus::get();
@@ -155,7 +155,7 @@ fn worker(
       usize,
       &[faf_pico_sys::phr_header; MAX_HEADERS_TO_PARSE],
       usize,
-      &mut [u8; REQ_RES_BUFF_SIZE],
+      *mut u8,
    ) -> usize,
 ) {
    let mut ep_events: [epoll_event; MAX_EPOLL_EVENTS_RETURNED] = unsafe { std::mem::zeroed() };
@@ -196,11 +196,12 @@ fn worker(
                let mut headers_len = MAX_HEADERS_TO_PARSE;
                let prev_buf_len = 0;
 
-               let mut bytes_parsed = 0;
-               while socket_len_read != bytes_parsed {
-                  let ret = unsafe {
+               let mut bytes_parsed_from_socket_total = 0;
+               let mut response_buffer_filled_total = 0;
+               while socket_len_read != bytes_parsed_from_socket_total {
+                  let bytes_parsed_from_socket = unsafe {
                      faf_pico_sys::phr_parse_request(
-                        request_buffer_ptr.add(bytes_parsed) as *const _,
+                        request_buffer_ptr.add(bytes_parsed_from_socket_total) as *const _,
                         socket_len_read as usize,
                         &mut method,
                         &mut method_len,
@@ -213,31 +214,15 @@ fn worker(
                      )
                   };
 
-                  bytes_parsed += ret as isize;
+                  bytes_parsed_from_socket_total += bytes_parsed_from_socket as isize;
 
-                  if likely!(ret > 0) {
-                     let response_buffer_filled =
-                        cb(method, method_len, path, path_len, &headers_buff, headers_len, &mut response_buffer);
+                  if likely!(bytes_parsed_from_socket > 0) {
+                     let response_buffer_filled = unsafe {
+                        cb(method, method_len, path, path_len, &headers_buff, headers_len, response_buffer.as_mut_ptr().add(response_buffer_filled_total))
+                     };
 
                      if likely!(response_buffer_filled > 0) {
-                        let wrote = unsafe {
-                           sys_call!(
-                              SYS_WRITE as isize,
-                              cur_fd as isize,
-                              response_buffer_ptr,
-                              response_buffer_filled as isize
-                           )
-                        };
-
-                        if likely!(wrote == response_buffer_filled as isize) {
-                        } else {
-                           #[cfg(feature = "faf_debug")]
-                           {
-                              panic!("wrote != response_buffer_filled")
-                           }
-                           unsafe { close_connection(epfd, cur_fd as isize) };
-                           break;
-                        }
+                        response_buffer_filled_total += response_buffer_filled;
                      } else {
                         #[cfg(feature = "faf_debug")]
                         {
@@ -254,6 +239,25 @@ fn worker(
                      unsafe { close_connection(epfd, cur_fd as isize) };
                      break;
                   }
+               }
+
+               let wrote = unsafe {
+                  sys_call!(
+                     SYS_WRITE as isize,
+                     cur_fd as isize,
+                     response_buffer_ptr,
+                     response_buffer_filled_total as isize
+                  )
+               };
+
+               if likely!(wrote == response_buffer_filled_total as isize) {
+               } else {
+                  #[cfg(feature = "faf_debug")]
+                  {
+                     panic!("wrote != response_buffer_filled")
+                  }
+                  unsafe { close_connection(epfd, cur_fd as isize) };
+                  break;
                }
             } else if unlikely!(-socket_len_read == EAGAIN as isize || -socket_len_read == EINTR as isize) {
             } else if unlikely!(socket_len_read <= 0) {

@@ -1,3 +1,4 @@
+use crate::const_config::MAX_EPOLL_CONN;
 use crate::const_sys::*;
 use sys_call::sys_call;
 
@@ -26,11 +27,12 @@ pub struct linger {
 }
 
 const OPTVAL: isize = 1;
+const OPTVAL_BUSYPOLL: isize = 50;
 
 #[inline]
 pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
    const _OPTVAL_TCPDEFERACCEPT_TIMEOUT: isize = 3;
-   const OPTVAL_TCPFASTOPEN_QUEUE_LEN: isize = 4096;
+   const OPTVAL_TCPFASTOPEN_QUEUE_LEN: isize = MAX_EPOLL_CONN as isize;
    const AF_INET: i32 = 2;
 
    unsafe {
@@ -56,13 +58,14 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
       );
 
       // Doesn't appear to provide any meaningful speed improvement on the listener
-      // sys_call!(SYS_SETSOCKOPT as isize,
-      //    fd_listener,
-      //    SOL_SOCKET,
-      //    SO_BUSY_POLL,
-      //    &OPTVAL_BUSYPOLL as *const _ as _,
-      //    std::mem::size_of_val(&OPTVAL_BUSYPOLL) as u32
-      // );
+      sys_call!(
+         SYS_SETSOCKOPT as isize,
+         fd_listener,
+         SOL_SOCKET as isize,
+         SO_BUSY_POLL as isize,
+         &OPTVAL_BUSYPOLL as *const _ as _,
+         std::mem::size_of_val(&OPTVAL_BUSYPOLL) as isize
+      );
 
       //https://stackoverflow.com/a/49900878
       // sys_call!(
@@ -89,8 +92,8 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
       //    IPPROTO_TCP as isize,
       //    TCP_DEFER_ACCEPT as isize,
       //    &_OPTVAL_TCPDEFERACCEPT_TIMEOUT as *const _ as _,
-      //    std::mem::size_of_val(&_OPTVAL_TCPDEFERACCEPT_TIMEOUT) as u32
-      // ));
+      //    std::mem::size_of_val(&_OPTVAL_TCPDEFERACCEPT_TIMEOUT) as isize
+      // );
 
       sys_call!(
          SYS_SETSOCKOPT as isize,
@@ -119,9 +122,8 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
 
 #[inline]
 pub fn setup_client_connection(fd: isize, core: i32) {
-   pub const O_NONBLOCK: isize = 2048;
-   pub const F_SETFL: isize = 4;
-   const OPTVAL_BUSYPOLL: isize = 50;
+   const O_NONBLOCK: isize = 2048;
+   const F_SETFL: isize = 4;
 
    unsafe {
       sys_call!(SYS_FCNTL as isize, fd as isize, F_SETFL, O_NONBLOCK);
