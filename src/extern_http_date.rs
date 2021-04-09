@@ -1,10 +1,9 @@
 // This is EXTERNAL code and is LICENSED AS MIT
 
-// This is a stripped and heavily optimized version of https://github.com/pyfisch/httpdate
+// This is a stripped and heavily optimized version of https://github.com/pyfisch/httpdate 0.3.2
+
 // This (faf's) version cuts to ~1/6 the original time, specifically, ~115ns -> ~20ns
-// https://crates.io/crates/httpdate/0.3.2/
-// This code is originally v0.3.2 and is dual licensed as MIT / Apache
-// Chosen license is MIT for faf's purposes
+// To use this yourself, see https://crates.io/crates/faf-http-date
 
 #[inline]
 pub fn get_buff_with_date() -> [u8; 35] {

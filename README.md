@@ -11,18 +11,7 @@ FaF requires:
 * [clang-12 and lld-12](https://apt.llvm.org/) to be installed and available in PATH. The version (i.e. 12) may change over time as Rust updates its LLVM version
 
 
-To use FaF for your own purposes, provide a callback which modifies the response buffer. For more information, see the examples directory
-
-Build and run FaF with the following commands. Remove `-Cprofile-use=/faf/merged.profdata` below if you don't know how to use [PGO](https://doc.rust-lang.org/rustc/profile-guided-optimization.html) with Rust or have not generated and merged profiles for yourself. Change the absolute path if you do generate a profile. If you neglect this step the build will fail or you will have degraded performance. In my tests, PGO doesn't add all that much performance in this project (~2%) so you won't be missing out on much
-```
-# Build (from FaF example project directory):
-RUSTFLAGS="-Ctarget-cpu=native -Clinker=/usr/bin/clang-12 -Clink-arg=-fuse-ld=lld-12 -Clink-arg=-flto=thin \
-   -Clto=thin -Cembed-bitcode=yes -Copt-level=3 -Ccodegen-units=1 -Cforce-frame-pointers=n -Cprofile-use=/faf/merged.profdata" \
-   /root/.cargo/bin/cargo build --verbose --release && strip --strip-all target/release/faf-ex
-
-# Run
-./target/release/faf-ex
-```
+To use FaF for your own purposes, provide a callback which modifies the response buffer. The callback will be called once per HTTP request. See the [FaF Example Project](https://github.com/errantmind/faf-example) for more information
 
 ## Design Principles
 1. Speed. Optimize for serving small to moderate payloads to a large number of concurrent connections. Speed will be balanced against over-specialization, like rewriting the entire project in hand-optimized assembly. Speed optimizations are constrained to unsafe Rust, unless the results of some alternative approach are overwhelmingly convincing
