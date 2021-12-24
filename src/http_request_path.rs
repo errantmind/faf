@@ -29,7 +29,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 // just they are present, because if they are present they 'may' be back-to-back. I test for the back-to-back-ness after the
 // characters are found, with the magic number 0x0a0d0a0d which is \r\n\r\n
 
-use core::arch::x86_64::{__m128i, _mm_cmpestri, _mm_loadu_si128, _mm_load_si128, _SIDD_CMP_EQUAL_ORDERED, _SIDD_UBYTE_OPS};
+use core::arch::x86_64::{
+   __m128i, _mm_cmpestri, _mm_load_si128, _mm_loadu_si128, _SIDD_CMP_EQUAL_ORDERED, _SIDD_UBYTE_OPS,
+};
 use core::intrinsics::{likely, unlikely};
 
 const SPACE: i8 = b' ' as i8;
@@ -49,12 +51,12 @@ pub unsafe fn find_sequence_simd(buf_start: *const i8, buf_end: *const i8) -> *c
       let b16: __m128i = _mm_loadu_si128(buf as *const __m128i);
       let r = _mm_cmpestri::<OP>(pattern16, 2, b16, 16);
       if r != 16 {
-         //Increment buf by r, which is the position in the 16-bit search, plus 2, the pattern length
+         //Increment buf by r, which is the position in the 16 byte search
          buf = buf.add(r as usize);
          return buf;
       }
 
-      //Increment by 15 instead of 16 to ensure \r\n is never split/overlaps between searches
+      //Increment by 15 bytes instead of 16 bytes to ensure \r\n is never split/overlaps between searches
       buf = buf.add(15);
       if buf >= buf_end {
          break;
