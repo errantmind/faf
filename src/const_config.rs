@@ -44,10 +44,13 @@ macro_rules! const_concat_bytes {
     };
 }
 
-pub const MAX_EPOLL_LISTENER_EVENTS_RETURNED: usize = 1;
+// faf spawns one thread per core, meaning each thread can handle 1024 connections
 pub const MAX_CONN: usize = 1024;
-pub const MAX_HEADERS_TO_PARSE: usize = 16;
+
+// the buffer size of both the request and response buffers. Currently set to 4096 bytes (most common page size)
 pub const REQ_RES_BUFF_SIZE: usize = 4096;
+
+// our syscall to wait for epoll events will timeout every 1ms. This is marginally faster in some cases than a longer timeout
 pub const EPOLL_TIMEOUT_MILLIS: isize = 1;
 
 // 4096 bytes page size / 12 byte epoll_event size = ~340. This size reduces page faults
