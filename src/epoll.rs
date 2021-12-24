@@ -41,7 +41,7 @@ pub struct epoll_event {
 
 static mut HTTP_DATE: [u8; 35] = http_date::get_buff_with_date();
 
-#[inline]
+#[inline(never)]
 pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize) {
    // Attempt to set a higher process priority, indicated by a negative number. -20 is the highest possible
    sys_call!(SYS_SETPRIORITY as isize, PRIO_PROCESS as isize, 0, -19);
@@ -60,8 +60,8 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
 
          // Unshare the file descriptor table between threads to keep the fd number itself low, otherwise all
          // threads will share the same file descriptor table
-         //sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
-         worker(port, cb, core as i32);
+         sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
+         threaded_worker(port, cb, core as i32);
       });
    }
 
@@ -73,12 +73,25 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
    }
 }
 
-#[inline]
-fn worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize, cpu_core: i32) {
+#[inline(never)]
+fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize, cpu_core: i32) {
    let (listener_fd, _, _) = net::get_listener_fd(port);
    net::setup_connection(listener_fd, cpu_core);
 
    let epfd = sys_call!(SYS_EPOLL_CREATE1 as isize, 0);
+
+   // Add listener fd to epoll for monitoring
+   {
+      let epoll_event_listener = epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN };
+
+      let _ret = sys_call!(
+         SYS_EPOLL_CTL as isize,
+         epfd,
+         EPOLL_CTL_ADD as isize,
+         listener_fd as isize,
+         &epoll_event_listener as *const epoll_event as isize
+      );
+   }
 
    let epoll_events: [epoll_event; MAX_EPOLL_EVENTS_RETURNED] = unsafe { core::mem::zeroed() };
    let epoll_events_ptr = &epoll_events as *const _ as isize;
@@ -99,12 +112,6 @@ fn worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
 
    let mut resbuf: [u8; REQ_RES_BUFF_SIZE] = unsafe { core::mem::zeroed() };
    let resbuf_start_address = &mut resbuf[0] as *mut _ as isize;
-
-   let epoll_event_listener = epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN };
-   let epoll_event_listener_ptr: isize = &epoll_event_listener as *const _ as isize;
-
-   let _ret =
-      sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, listener_fd as isize, epoll_event_listener_ptr);
 
    loop {
       let num_incoming_events = sys_call!(
