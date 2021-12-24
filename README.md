@@ -24,12 +24,13 @@ To use FaF for your own purposes, provide a callback which modifies the response
 
 ## Code Tour
 
-Just look at `epoll.rs`, everything is either there or referenced there and, even then, it is only ~200 lines of code.
+Just look at `epoll.rs`, everything is either there or referenced there and, even then, it is only ~230 lines of code.
 
 Aside: a `no_std` version of this project compiles to a total of only ~400 lines of assembly TEXT, and 7KB binary, although it takes a few modifications to get there: the only real dependency on std is threading, so if we eliminate it and change to a `1 process per core` model instead of `1 thread per core` we get a very minimal setup. The performance is ~1% worse. If you are interested in this, let's discuss.
 
 ## Decisions
-* Use epoll for event loop as io_uring is not fully stabilized (as of 2021/03/24) and TechEmpower's environment isn't using the mainline kernel. Strive to minimize system calls
+* Use epoll for event loop as io_uring is not fully stabilized (as of 2021/03/24) and io_uring may not actually be faster than epoll in all cases. At some point in the future I will do a test and rewrite FaF using io_uring, but not until sometime in 2022.
+* Strive to minimize system calls as they, in aggregate, can cause significant slowdowns
 * Use separate epoll instances on separate threads, one per CPU core, to handle all the 'work' (read / writes)
    * Messing with priority and affinity of these threads negatively impacted performance (20+% reduction)
    * Numa is not an issue in the current test environment so less gains to be had with thread affinity
