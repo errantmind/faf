@@ -45,14 +45,17 @@ pub unsafe fn find_sequence_simd(buf_start: *const i8, buf_end: *const i8) -> *c
    const OP: i32 = _SIDD_CMP_EQUAL_ORDERED | _SIDD_UBYTE_OPS;
    let mut buf: *const i8 = buf_start;
 
-   let pattern16: __m128i = _mm_load_si128(EOL_PATTERN.0.as_ptr() as *const __m128i);
+   // We only use two bytes as our pattern, and that is ok
+   let sixteen_byte_pattern: __m128i = _mm_load_si128(EOL_PATTERN.0.as_ptr() as *const __m128i);
 
    loop {
-      let b16: __m128i = _mm_loadu_si128(buf as *const __m128i);
-      let r = _mm_cmpestri::<OP>(pattern16, 2, b16, 16);
-      if r != 16 {
+      let sixteen_bytes_from_buffer: __m128i = _mm_loadu_si128(buf as *const __m128i);
+      let found_at_byte_pos = _mm_cmpestri::<OP>(sixteen_byte_pattern, 2, sixteen_bytes_from_buffer, 16);
+
+      // If found_at_byte_pos == 16, then we didn't find a match. We found a match if less than 16
+      if found_at_byte_pos != 16 {
          //Increment buf by r, which is the position in the 16 byte search
-         buf = buf.add(r as usize);
+         buf = buf.add(found_at_byte_pos as usize);
          return buf;
       }
 
@@ -79,7 +82,8 @@ pub unsafe fn parse_request_path_pipelined_simd(
    let buf_end: *const i8 = buf_start.add(len);
    let mut i = 0;
 
-   while likely(i < 9) {
+   // The longest HTTP 1.1 request method is 7 characters
+   while likely(i < 8) {
       if *(buf.add(i)) == SPACE {
          *method = buf;
          *method_len = i;
