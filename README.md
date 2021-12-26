@@ -1,5 +1,7 @@
 # FaF
-FaF (Fast as Fuck) is a Linux webserver written in Rust. FaF..
+FaF (Fast as Fuck) is a Linux webserver written in Rust.
+
+FaF..
 * has one goal: to demonstrate the upper bound of single-node performance while remaining usable in a production setting.
 * is, perhaps, deceptively simple. FaF was designed to be easily understood while providing cutting edge performance. Each facet of FaF has been meticulously benchmarked and all design decisions were deliberate.
 * is open to community contributions that further improve its speed.

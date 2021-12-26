@@ -54,7 +54,7 @@ pub unsafe fn find_sequence_simd(buf_start: *const i8, buf_end: *const i8) -> *c
 
       // If found_at_byte_pos == 16, then we didn't find a match. We found a match if less than 16
       if found_at_byte_pos != 16 {
-         //Increment buf by r, which is the position in the 16 byte search
+         //Increment buf by found_at_byte_pos, which is the position in the 16 byte search
          buf = buf.add(found_at_byte_pos as usize);
          return buf;
       }

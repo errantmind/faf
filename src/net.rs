@@ -82,16 +82,6 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
          size_of_optval as isize
       );
 
-      //https://stackoverflow.com/a/49900878
-      // sys_call!(
-      //    SYS_SETSOCKOPT as isize,
-      //    fd_listener,
-      //    SOL_SOCKET as isize,
-      //    SO_ZEROCOPY as isize,
-      //    &OPTVAL as *const _ as _,
-      //    core::mem::size_of_val(&OPTVAL) as isize
-      // );
-
       sys_call!(
          SYS_SETSOCKOPT as isize,
          fd_listener,
@@ -99,6 +89,15 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
          TCP_QUICKACK as isize,
          &OPTVAL as *const _ as _,
          core::mem::size_of_val(&OPTVAL) as isize
+      );
+
+      sys_call!(
+         SYS_SETSOCKOPT as isize,
+         fd_listener,
+         IPPROTO_TCP as isize,
+         TCP_FASTOPEN as isize,
+         &MAX_CONN as *const _ as _,
+         core::mem::size_of_val(&MAX_CONN) as isize
       );
 
       // Does not add much throughput, if any. Also, can hide dead connections. Not useful.
@@ -111,14 +110,15 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
       //    core::mem::size_of_val(&_OPTVAL_TCPDEFERACCEPT_TIMEOUT) as isize
       // );
 
-      sys_call!(
-         SYS_SETSOCKOPT as isize,
-         fd_listener,
-         IPPROTO_TCP as isize,
-         TCP_FASTOPEN as isize,
-         &MAX_CONN as *const _ as _,
-         core::mem::size_of_val(&MAX_CONN) as isize
-      );
+      //https://stackoverflow.com/a/49900878
+      // sys_call!(
+      //    SYS_SETSOCKOPT as isize,
+      //    fd_listener,
+      //    SOL_SOCKET as isize,
+      //    SO_ZEROCOPY as isize,
+      //    &OPTVAL as *const _ as _,
+      //    core::mem::size_of_val(&OPTVAL) as isize
+      // );
 
       let addr = sockaddr_in {
          sin_family: AF_INET as u16,
@@ -149,16 +149,6 @@ pub fn setup_connection(fd: isize, core: i32) {
       core::mem::size_of_val(&OPTVAL) as isize
    );
 
-   //https://stackoverflow.com/a/49900878
-   // sys_call!(
-   //    SYS_SETSOCKOPT as isize,
-   //    fd as isize,
-   //    SOL_SOCKET as isize,
-   //    SO_ZEROCOPY as isize,
-   //    &OPTVAL as *const isize as _,
-   //    core::mem::size_of_val(&OPTVAL) as isize
-   // );
-
    sys_call!(
       SYS_SETSOCKOPT as isize,
       fd,
@@ -180,6 +170,16 @@ pub fn setup_connection(fd: isize, core: i32) {
          core::mem::size_of_val(&core) as isize
       );
    }
+
+   //https://stackoverflow.com/a/49900878
+   // sys_call!(
+   //    SYS_SETSOCKOPT as isize,
+   //    fd as isize,
+   //    SOL_SOCKET as isize,
+   //    SO_ZEROCOPY as isize,
+   //    &OPTVAL as *const isize as _,
+   //    core::mem::size_of_val(&OPTVAL) as isize
+   // );
 
    // Only useful when using blocking reads, not non-blocking reads as I am
    // sys_call!(
