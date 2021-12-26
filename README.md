@@ -1,7 +1,7 @@
 # FaF
 FaF (Fast as Fuck) is a Linux webserver written in Rust. FaF..
 * has one goal: to demonstrate the upper bound of single-node performance while remaining usable in a production setting.
-* is, perhaps, deceptively simple. It is designed to be easily understood while providing cutting edge performance. Each facet of FaF has been meticulously benchmarked and all design decisions were deliberate.
+* is, perhaps, deceptively simple. FaF was designed to be easily understood while providing cutting edge performance. Each facet of FaF has been meticulously benchmarked and all design decisions were deliberate.
 * is open to community contributions that further improve its speed.
 * is open to issues that clearly demonstrate a security vulnerability.
 * has no Rust dependencies and can be converted into a `#![no_std]` project. See `Code Tour` below for more info. A side-benefit of this is a very small attack surface.
@@ -14,7 +14,7 @@ FaF requires:
 * [clang-13 and lld-13](https://apt.llvm.org/) to be installed and available in PATH. The version (i.e. 13) may change over time as Rust's `rustc` updates its LLVM version
 
 
-To use FaF for your own purposes, provide a callback which modifies the response buffer. The response buffer will always start empty and have a length as defined in the FaF project, so it is easy to ensure you do not write past this length. If you need more buffer, increase the value of the constant in the FaF web server project. From the callback, return the number of bytes you wrote to the buffer. The callback will be called once per HTTP request. See the [FaF Example Project](https://github.com/errantmind/faf-example) for more information
+To use FaF for your own purposes, provide a callback which modifies the response buffer. The response buffer will always start empty and have a length as defined in the FaF project, so it is easy to ensure you do not write past this length. If you need more buffer, increase the value of the constant `RES_BUFF_SIZE` in this project. From the callback, return the number of bytes you wrote to the buffer. The callback will be called once per HTTP request. See the [FaF Example Project](https://github.com/errantmind/faf-example) for more information.
 
 ## Design Principles
 1. Speed. Optimize for serving small to moderate payloads to a large number of concurrent connections. Speed will be balanced against over-specialization, like rewriting the entire project in hand-optimized assembly. Speed optimizations are constrained to unsafe Rust, unless the results of some alternative approach are overwhelmingly convincing.
