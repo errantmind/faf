@@ -143,7 +143,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   &saved_event as *const epoll_event as isize
                );
             } else {
-               sys_call!(SYS_CLOSE as isize, incoming_fd);
+               net::close_connection(epfd, cur_fd as isize);
             }
          } else {
             let buffer_used = *req_buf_cur_position - req_buf_start_address;
