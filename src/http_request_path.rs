@@ -82,8 +82,8 @@ pub unsafe fn parse_request_path_pipelined_simd(
    let buf_end: *const i8 = buf_start.add(len);
    let mut i = 0;
 
-   // The longest HTTP 1.1 request method is 7 characters
-   while likely(i < 8) {
+   // The longest HTTP 1.1 request method is 7 characters, + 1 character for the space after
+   while likely(i < 9) {
       if *(buf.add(i)) == SPACE {
          *method = buf;
          *method_len = i;
