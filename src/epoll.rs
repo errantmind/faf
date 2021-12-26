@@ -128,14 +128,9 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
          let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
 
          if cur_fd == listener_fd {
-            if unlikely(cur_fd >= MAX_CONN as isize) {
-               sys_call!(SYS_CLOSE as isize, cur_fd);
-               continue;
-            }
-
             let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd as isize, 0, 0);
 
-            if incoming_fd >= 0 {
+            if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
                *req_buf_cur_position = req_buf_start_address;
                net::setup_connection(incoming_fd, cpu_core as i32);
                saved_event.data.fd = incoming_fd as i32;
@@ -147,6 +142,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   incoming_fd as isize,
                   &saved_event as *const epoll_event as isize
                );
+            } else {
+               sys_call!(SYS_CLOSE as isize, incoming_fd);
             }
          } else {
             let buffer_used = *req_buf_cur_position - req_buf_start_address;
