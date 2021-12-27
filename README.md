@@ -13,8 +13,10 @@ FaF..
 FaF requires:
 * linux x86_64
 * nightly Rust
+
+FaF recommends:
 * [clang-13 and lld-13](https://apt.llvm.org/) to be installed and available in PATH. The version (i.e. 13) may change over time as Rust's `rustc` updates its LLVM version
-* for best results, run as root; it is not required though. FaF uses root to set process priority as well as a setting or two related to the socket options
+* to be run as root; it is not required though. FaF uses root to set process priority as well as a setting or two related to the socket options
 
 
 To use FaF for your own purposes, provide a callback which modifies the response buffer. The response buffer will always start empty and have a length as defined in the FaF project, so it is easy to ensure you do not write past this length. If you need more buffer, increase the value of the constant `RES_BUFF_SIZE` in this project. From the callback, return the number of bytes you wrote to the buffer. The callback will be called once per HTTP request. See the [FaF Example Project](https://github.com/errantmind/faf-example) for more information.
