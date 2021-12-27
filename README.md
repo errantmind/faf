@@ -15,7 +15,7 @@ FaF requires:
 * nightly Rust
 
 FaF recommends:
-* [clang-13 and lld-13](https://apt.llvm.org/) to be installed and available in PATH. The version (i.e. 13) may change over time as Rust's `rustc` updates its LLVM version
+* [clang-13 and lld-13](https://apt.llvm.org/) to be installed and available in PATH. The version (i.e. 13) may change over time as Rust's `rustc` updates its LLVM version. See the example project for recommended compiler flags.
 * to be run as root; it is not required though. FaF uses root to set process priority as well as a setting or two related to the socket options
 
 
