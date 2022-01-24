@@ -1,6 +1,20 @@
-// This particular file is LICENSED AS GPLv2 (https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
+/*
+FaF is a cutting edge, high performance web server
+Copyright (C) 2021  James Bates
 
-#![allow(dead_code)]
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 
 // Manually transformed from /usr/include/x86_64-linux-gnu/asm/unistd_64.h
 
@@ -643,3 +657,22 @@ pub const CLONE_FILES: u32 = 0x400;
 
 // SET_PRIORITY
 pub const PRIO_PROCESS: u32 = 0;
+
+// manually transformed from /usr/include/asm-generic/resource.h
+pub const RLIMIT_CPU: u32 = 0;
+pub const RLIMIT_FSIZE: u32 = 1;
+pub const RLIMIT_DATA: u32 = 2;
+pub const RLIMIT_STACK: u32 = 3;
+pub const RLIMIT_CORE: u32 = 4;
+pub const RLIMIT_RSS: u32 = 5;
+pub const RLIMIT_NPROC: u32 = 6;
+pub const RLIMIT_NOFILE: u32 = 7;
+pub const RLIMIT_MEMLOCK: u32 = 8;
+pub const RLIMIT_AS: u32 = 9;
+pub const RLIMIT_LOCKS: u32 = 10;
+pub const RLIMIT_SIGPENDING: u32 = 11;
+pub const RLIMIT_MSGQUEUE: u32 = 12;
+pub const RLIMIT_NICE: u32 = 13;
+pub const RLIMIT_RTPRIO: u32 = 14;
+pub const RLIMIT_RTTIME: u32 = 15;
+pub const RLIM_NLIMITS: u32 = 16;

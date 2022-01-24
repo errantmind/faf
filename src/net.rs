@@ -50,9 +50,10 @@ pub struct linger {
 }
 
 const OPTVAL: isize = 1;
-const OPTVAL_BUSYPOLL: isize = 50;
+
 const O_NONBLOCK: isize = 2048;
 const F_SETFL: isize = 4;
+const SOCK_LEN: u32 = core::mem::size_of::<sockaddr_in>() as u32;
 
 #[inline]
 pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
@@ -127,12 +128,11 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
          sin_zero: core::mem::zeroed(),
       };
 
-      sys_call!(SYS_BIND as isize, fd_listener, &addr as *const _ as _, core::mem::size_of_val(&addr) as isize);
+      sys_call!(SYS_BIND as isize, fd_listener, &addr as *const _ as _, SOCK_LEN as isize);
 
       sys_call!(SYS_LISTEN as isize, fd_listener, OPTVAL_TCPFASTOPEN_QUEUE_LEN);
 
-      let sock_len: u32 = core::mem::size_of::<sockaddr_in>() as u32;
-      (fd_listener, addr, sock_len)
+      (fd_listener, addr, SOCK_LEN as u32)
    }
 }
 
@@ -182,6 +182,7 @@ pub fn setup_connection(fd: isize, core: i32) {
    // );
 
    // Only useful when using blocking reads, not non-blocking reads as I am
+   // const OPTVAL_BUSYPOLL: isize = 50;
    // sys_call!(
    //    SYS_SETSOCKOPT as isize,
    //    fd,

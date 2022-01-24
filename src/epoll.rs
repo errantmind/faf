@@ -22,6 +22,7 @@ use crate::http_date;
 use crate::http_request_path;
 use crate::net;
 use crate::sys_call;
+use crate::util;
 use core::intrinsics::{likely, unlikely};
 use core::ops::Add;
 
@@ -42,21 +43,24 @@ pub struct epoll_event {
 static mut HTTP_DATE: [u8; 35] = http_date::get_buff_with_date();
 
 #[inline(never)]
-pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize) {
+pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8, u32) -> usize) {
    // Attempt to set a higher process priority, indicated by a negative number. -20 is the highest possible
    sys_call!(SYS_SETPRIORITY as isize, PRIO_PROCESS as isize, 0, -19);
+
+   //util::set_limits(RLIMIT_STACK, 1024 * 1024 * 16);
 
    // Initialize the DATE before launching workers
    unsafe {
       http_date::get_http_date(&mut HTTP_DATE);
    }
 
-   let num_cpu_cores = crate::util::get_num_logical_cpus();
+   let num_cpu_cores = util::get_num_logical_cpus();
+   threaded_worker(port, cb, 1);
    for core in 0..num_cpu_cores {
       let thread_name = format!("faf{}", core);
       let thread_builder = std::thread::Builder::new().name(thread_name).stack_size(1024 * 1024 * 8);
       let _ = thread_builder.spawn(move || {
-         crate::util::set_current_thread_cpu_affinity_to(core);
+         util::set_current_thread_cpu_affinity_to(core);
 
          // Unshare the file descriptor table between threads to keep the fd number itself low, otherwise all
          // threads will share the same file descriptor table
@@ -74,7 +78,11 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
 }
 
 #[inline(never)]
-fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize, cpu_core: i32) {
+fn threaded_worker(
+   port: u16,
+   cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8, u32) -> usize,
+   cpu_core: i32,
+) {
    let (listener_fd, _, _) = net::get_listener_fd(port);
    net::setup_connection(listener_fd, cpu_core);
 
@@ -113,6 +121,12 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
    let mut resbuf: [u8; RES_BUFF_SIZE] = unsafe { core::mem::zeroed() };
    let resbuf_start_address = &mut resbuf[0] as *mut _ as isize;
 
+   // Used for capturing the IP address of the client
+   let addr: net::sockaddr_in = unsafe { core::mem::zeroed() };
+   const SOCK_LEN: u32 = core::mem::size_of::<net::sockaddr_in>() as u32;
+   let socket_len = SOCK_LEN;
+   let mut ip_address_cache: [u32; MAX_CONN] = unsafe { core::mem::zeroed() };
+
    loop {
       let num_incoming_events = sys_call!(
          SYS_EPOLL_WAIT as isize,
@@ -124,14 +138,32 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
       for index in 0..num_incoming_events {
          let cur_fd = unsafe { (*epoll_events.get_unchecked(index as usize)).data.fd } as isize;
-         let req_buf_start_address = (&mut reqbuf[0] as *const u8 as isize).add(cur_fd * REQ_BUFF_SIZE as isize);
-         let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
 
          if cur_fd == listener_fd {
-            let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd as isize, 0, 0);
+            let incoming_fd = sys_call!(
+               SYS_ACCEPT as isize,
+               listener_fd as isize,
+               &addr as *const _ as _,
+               &socket_len as *const _ as _
+            );
 
             if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
-               *req_buf_cur_position = req_buf_start_address;
+               {
+                  // Reset buffer position for newly accepted connection
+                  let req_buf_start_address =
+                     (&mut reqbuf[0] as *const u8 as isize).add(incoming_fd * REQ_BUFF_SIZE as isize);
+                  let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(incoming_fd as usize) };
+
+                  *req_buf_cur_position = req_buf_start_address;
+               }
+               {
+                  // Add/Update IP address for newly accepted connection
+                  let ip_address_cache_cur_position =
+                     unsafe { ip_address_cache.get_unchecked_mut(incoming_fd as usize) };
+
+                  *ip_address_cache_cur_position = addr.sin_addr.s_addr;
+               }
+
                net::setup_connection(incoming_fd, cpu_core as i32);
                saved_event.data.fd = incoming_fd as i32;
 
@@ -146,6 +178,9 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                net::close_connection(epfd, cur_fd as isize);
             }
          } else {
+            let req_buf_start_address = (&mut reqbuf[0] as *const u8 as isize).add(cur_fd * REQ_BUFF_SIZE as isize);
+            let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
+
             let buffer_used = *req_buf_cur_position - req_buf_start_address;
             let buffer_remaining = REQ_BUFF_SIZE as isize - buffer_used;
 
@@ -183,6 +218,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                            path_len,
                            resbuf_start_address.add(response_buffer_filled_total) as *mut _,
                            HTTP_DATE.as_ptr(),
+                           *ip_address_cache.get_unchecked_mut(cur_fd as usize),
                         )
                      };
 

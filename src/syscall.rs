@@ -2,6 +2,8 @@
 
 // To use this yourself, see  https://crates.io/crates/faf-syscall
 
+use core::arch::asm;
+
 #[macro_export(local_inner_macros)]
 macro_rules! sys_call {
    ($num:ident) => {

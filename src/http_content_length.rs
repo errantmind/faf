@@ -1,9 +1,5 @@
 // This particular file is LICENSED AS Unlicense (https://unlicense.org/)
 
-
-
-#![allow(dead_code)]
-
 const DIGITS_LUT: [char; 200] = [
    '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9', '1', '0', '1',
    '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '1', '8', '1', '9', '2', '0', '2', '1', '2', '2',
@@ -16,7 +12,7 @@ const DIGITS_LUT: [char; 200] = [
    '9', '2', '9', '3', '9', '4', '9', '5', '9', '6', '9', '7', '9', '8', '9', '9',
 ];
 
-// Basically, convert u64 to ascii string representation to bytes. This is useful for Content-Length
+// Convert u64 to ascii string representation to bytes. This is useful for Content-Length
 #[inline]
 pub fn u64toa(buf: &mut [i8], value: u64) -> i64 {
    let mut index: usize = 0;
@@ -86,4 +82,32 @@ pub fn u64toa(buf: &mut [i8], value: u64) -> i64 {
    }
 
    index as i64
+}
+
+// Convert u8 to ascii string representation to bytes.
+#[inline]
+pub fn u8toa(out_buf_start: *const u8, value: u8) -> usize {
+   let mut buf_walker = out_buf_start.as_mut();
+
+   let v: u32 = value as u32;
+
+   let d1: u32 = (v / 100) << 1;
+   let d2: u32 = (v % 100) << 1;
+
+   unsafe {
+      if v >= 100 {
+         *buf_walker = *DIGITS_LUT.get_unchecked(d1 as usize + 1) as u8;
+         buf_walker = buf_walker.add(1);
+      }
+
+      if v >= 10 {
+         *buf_walker = *DIGITS_LUT.get_unchecked(d2 as usize) as u8;
+         buf_walker = buf_walker.add(1);
+      }
+
+      *buf_walker = *DIGITS_LUT.get_unchecked(d2 as usize + 1) as u8;
+      buf_walker = buf_walker.add(1);
+   }
+
+   buf_walker as usize - out_buf_start as usize
 }

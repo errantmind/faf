@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 #![allow(clippy::missing_safety_doc, clippy::uninit_assumed_init, dead_code)]
-#![feature(const_fn_trait_bound, const_size_of_val, core_intrinsics, asm)]
+#![feature(const_fn_trait_bound, const_size_of_val, core_intrinsics, ptr_const_cast)]
 
 pub mod const_config;
 pub mod const_http;
