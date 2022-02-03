@@ -54,17 +54,13 @@ const CURRENT_THREAD_CONTROL_PID: i32 = 0;
 #[inline]
 pub fn set_current_thread_cpu_affinity_to(cpu_num: usize) {
    let mut set: cpu_set_t = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
-   unsafe {
-      sched_getaffinity(CURRENT_THREAD_CONTROL_PID, core::mem::size_of::<cpu_set_t>(), &mut set);
-   }
+   unsafe { sched_getaffinity(CURRENT_THREAD_CONTROL_PID, core::mem::size_of::<cpu_set_t>(), &mut set) };
    if !cpu_isset(cpu_num, &set) {
       eprintln!("Cannot set affinity for cpu {}", cpu_num);
    } else {
       let mut set_control: cpu_set_t = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
       cpu_set(cpu_num, &mut set_control);
-      unsafe {
-         sched_setaffinity(0, core::mem::size_of::<cpu_set_t>(), &set_control);
-      }
+      unsafe { sched_setaffinity(0, core::mem::size_of::<cpu_set_t>(), &set_control) };
    }
 }
 
@@ -115,5 +111,5 @@ pub const fn const_len<T>(con: &[T]) -> usize {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[inline]
 fn prefetch(p: *const u8, offset: isize) {
-   unsafe { core::intrinsics::prefetch_read_data(p.offset(offset) as *const u8, 3) }
+   unsafe { core::intrinsics::prefetch_read_data(p.offset(offset) as *const u8, 3) };
 }
