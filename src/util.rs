@@ -162,6 +162,7 @@ pub fn set_maximum_process_priority() {
 /// Unshare the file descriptor table between threads to keep the fd number itself low, otherwise all
 /// threads will share the same file descriptor table. A single file descriptor table is problematic if
 /// we use file descriptors to index data structures
+#[inline]
 pub fn unshare_file_descriptors() {
    sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
 }
@@ -177,62 +178,60 @@ pub fn unshare_file_descriptors() {
 /// Example:
 ///
 /// ```
-/// use faf::util::inet_ntoa;
+/// use faf::util::inet4_ntoa;
 ///
 /// unsafe {
 ///    let mut ip_buff: [u8; 15] = core::mem::zeroed();
 ///    let ip_buff_ptr = &mut ip_buff as *mut u8;
-///    let ip_buff_len = inet_ntoa(16777343u32, ip_buff_ptr);
+///    let ip_buff_len = inet4_ntoa(16777343u32, ip_buff_ptr);
 ///
 ///    // Optional conversion to &str
 ///    let ip_slice = core::slice::from_raw_parts(ip_buff_ptr, ip_buff_len);
 ///    let ip_str = core::str::from_utf8_unchecked(ip_slice);
 ///    println!("{} -> {}", 16777343u32, ip_str);
 ///
-///    // Trim the null characters off the end of the &str
 ///    assert_eq!(ip_str, "127.0.0.1");
 /// }
 /// ```
 
 #[inline]
-pub fn inet_ntoa(s_addr: u32, out_buff_start: *mut u8) -> usize {
+pub unsafe fn inet4_ntoa(s_addr: u32, out_buff_start: *mut u8) -> usize {
    debug_assert!(out_buff_start as usize != 0);
 
-   unsafe {
-      let s_addr_start_ptr = &s_addr as *const u32 as *const u8;
-      let mut output_byte_walker = out_buff_start;
+   let s_addr_start_ptr = &s_addr as *const u32 as *const u8;
+   let mut output_byte_walker = out_buff_start;
 
-      output_byte_walker = output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *s_addr_start_ptr));
+   output_byte_walker = output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *s_addr_start_ptr));
 
-      *output_byte_walker = DOT;
-      output_byte_walker = output_byte_walker.add(1);
+   *output_byte_walker = DOT;
+   output_byte_walker = output_byte_walker.add(1);
 
-      output_byte_walker =
-         output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *(s_addr_start_ptr.add(1))));
+   output_byte_walker =
+      output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *(s_addr_start_ptr.add(1))));
 
-      *output_byte_walker = DOT;
-      output_byte_walker = output_byte_walker.add(1);
+   *output_byte_walker = DOT;
+   output_byte_walker = output_byte_walker.add(1);
 
-      output_byte_walker =
-         output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *(s_addr_start_ptr.add(2))));
+   output_byte_walker =
+      output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *(s_addr_start_ptr.add(2))));
 
-      *output_byte_walker = DOT;
-      output_byte_walker = output_byte_walker.add(1);
+   *output_byte_walker = DOT;
+   output_byte_walker = output_byte_walker.add(1);
 
-      output_byte_walker =
-         output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *(s_addr_start_ptr.add(3))));
+   output_byte_walker =
+      output_byte_walker.add(http_content_length::u8toa(output_byte_walker, *(s_addr_start_ptr.add(3))));
 
-      output_byte_walker as usize - out_buff_start as usize
-   }
+   output_byte_walker as usize - out_buff_start as usize
 }
 
+#[inline]
 #[test]
-fn test_inet_ntoa() {
+fn test_inet4_ntoa() {
    unsafe {
       const TEST1: u32 = 16777343;
       let mut ip_buff: [u8; 15] = core::mem::zeroed();
       let ip_buff_ptr = &mut ip_buff as *mut u8;
-      let len = inet_ntoa(TEST1, ip_buff_ptr);
+      let len = inet4_ntoa(TEST1, ip_buff_ptr);
       let byte_slice = core::slice::from_raw_parts(ip_buff_ptr, len);
       let ip_str = core::str::from_utf8_unchecked(byte_slice);
       assert_eq!(ip_str, "127.0.0.1");
@@ -240,9 +239,72 @@ fn test_inet_ntoa() {
       const TEST2: u32 = 3170937024;
       let mut ip_buff: [u8; 15] = core::mem::zeroed();
       let ip_buff_ptr = &mut ip_buff as *mut u8;
-      let len = inet_ntoa(TEST2, ip_buff_ptr);
+      let len = inet4_ntoa(TEST2, ip_buff_ptr);
       let byte_slice = core::slice::from_raw_parts(ip_buff_ptr, len);
       let ip_str = core::str::from_utf8_unchecked(byte_slice);
       assert_eq!(ip_str, "192.168.0.189");
+   }
+}
+
+/// Converts str of an IP address representing an internet host to a 32-bit int which represents
+/// also represents the same IP address which is in network byte order
+///
+/// A maximum of 15 bytes (XXX.XXX.XXX.XXX) are read from the input buffer which is enough to represent any
+/// valid IPV4 address from 0.0.0.0 to 255.255.255.255
+///
+/// Example:
+///
+/// ```
+/// use faf::util::inet4_aton;
+///
+/// unsafe {
+///    const IP: &str = "127.0.0.1";
+///    let ip_buff_ptr = IP as *const _ as *const u8;
+///    let ip_host_int: u32 = inet4_aton(ip_buff_ptr, IP.len());
+///    assert_eq!(ip_host_int, 16777343);
+/// }
+/// ```
+
+#[inline]
+pub unsafe fn inet4_aton(in_buff_start: *const u8, len: usize) -> u32 {
+   let s_addr: u32 = 0;
+   let mut s_addr_ptr = &s_addr as *const _ as *mut u8;
+   let mut output: u8 = 0;
+   let in_buff_end = in_buff_start.add(len);
+   let mut input_byte_walker = in_buff_start;
+
+   loop {
+      if *input_byte_walker == DOT || input_byte_walker == in_buff_end {
+         *s_addr_ptr = output;
+         s_addr_ptr = s_addr_ptr.add(1);
+         output = 0;
+         if input_byte_walker == in_buff_end {
+            break;
+         }
+      } else {
+         output = output * 10 + (*input_byte_walker - 48u8);
+      }
+
+      input_byte_walker = input_byte_walker.add(1);
+   }
+
+   s_addr
+}
+
+#[test]
+#[inline]
+fn test_inet4_aton() {
+   unsafe {
+      const TEST1: &str = "127.0.0.1";
+      let ip_buff_ptr = TEST1 as *const _ as *const u8;
+      let res = inet4_aton(ip_buff_ptr, TEST1.len());
+      assert_eq!(res, 16777343);
+      println!("{}", res);
+
+      const TEST2: &str = "192.168.0.189";
+      let ip_buff_ptr = TEST2 as *const _ as *const u8;
+      let res = inet4_aton(ip_buff_ptr, TEST2.len());
+      assert_eq!(res, 3170937024);
+      println!("{}", res);
    }
 }
