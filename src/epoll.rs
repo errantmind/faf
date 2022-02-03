@@ -44,8 +44,7 @@ static mut HTTP_DATE: [u8; 35] = http_date::get_buff_with_date();
 
 #[inline(never)]
 pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8, u32) -> usize) {
-   // Attempt to set a higher process priority, indicated by a negative number. -20 is the highest possible
-   sys_call!(SYS_SETPRIORITY as isize, PRIO_PROCESS as isize, 0, -19);
+   util::set_maximum_process_priority();
 
    //util::set_limits(RLIMIT_STACK, 1024 * 1024 * 16);
 
@@ -55,16 +54,12 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
    }
 
    let num_cpu_cores = util::get_num_logical_cpus();
-   threaded_worker(port, cb, 1);
    for core in 0..num_cpu_cores {
       let thread_name = format!("faf{}", core);
       let thread_builder = std::thread::Builder::new().name(thread_name).stack_size(1024 * 1024 * 8);
       let _ = thread_builder.spawn(move || {
          util::set_current_thread_cpu_affinity_to(core);
-
-         // Unshare the file descriptor table between threads to keep the fd number itself low, otherwise all
-         // threads will share the same file descriptor table
-         sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
+         util::unshare_file_descriptors();
          threaded_worker(port, cb, core as i32);
       });
    }

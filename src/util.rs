@@ -119,7 +119,7 @@ pub const fn const_len<T>(con: &[T]) -> usize {
    con.len()
 }
 
-// _mm_prefetch
+/// _mm_prefetch
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[inline]
 fn prefetch(p: *const u8, offset: isize) {
@@ -150,6 +150,20 @@ pub fn set_limits(resource: u32, value: u32) -> isize {
 
    limits.rlim_cur = value;
    sys_call!(SYS_SETRLIMIT as isize, resource as isize, &limits as *const _ as _)
+}
+
+/// Attempt to set a higher process priority. -20 is the highest we can set.
+/// Threads inherit this priority
+#[inline]
+pub fn set_maximum_process_priority() {
+   sys_call!(SYS_SETPRIORITY as isize, PRIO_PROCESS as isize, 0, -20);
+}
+
+/// Unshare the file descriptor table between threads to keep the fd number itself low, otherwise all
+/// threads will share the same file descriptor table. A single file descriptor table is problematic if
+/// we use file descriptors to index data structures
+pub fn unshare_file_descriptors() {
+   sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
 }
 
 /// Converts the internet host which is in network byte order, represented as a 32bit int
