@@ -92,7 +92,7 @@ fn threaded_worker(
    {
       let epoll_event_listener = epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN };
 
-      let _ret = sys_call!(
+      sys_call!(
          SYS_EPOLL_CTL as isize,
          epfd,
          EPOLL_CTL_ADD as isize,
