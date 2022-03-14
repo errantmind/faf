@@ -30,3 +30,21 @@ mod net;
 mod syscall;
 pub mod util;
 
+/// fn(
+///
+///   method: *const u8,
+///
+///   method_len: usize,
+///
+///   path: *const u8,
+///
+///   path_len: usize,
+///
+///   response_buffer: *mut u8,
+///
+///   date_buff: *const u8,
+///
+///   ip_addr: u32
+///
+/// ) -> bytes_written_to_response_buffer: usize
+pub type CallbackFunction = fn(*const u8, usize, *const u8, usize, *mut u8, *const u8, u32) -> usize;

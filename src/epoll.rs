@@ -23,6 +23,7 @@ use crate::http_request_path;
 use crate::net;
 use crate::sys_call;
 use crate::util;
+use crate::CallbackFunction;
 use core::intrinsics::{likely, unlikely};
 use core::ops::Add;
 
@@ -42,8 +43,9 @@ pub struct epoll_event {
 
 static mut HTTP_DATE: [u8; 35] = http_date::get_buff_with_date();
 
+
 #[inline(never)]
-pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8, u32) -> usize) {
+pub fn go(port: u16, cb: CallbackFunction) {
    util::set_maximum_process_priority();
 
    //util::set_limits(RLIMIT_STACK, 1024 * 1024 * 16);
