@@ -23,7 +23,7 @@ pub mod const_config;
 pub mod const_http;
 mod const_sys;
 pub mod epoll;
-mod http_content_length;
+pub mod http_content_length;
 mod http_date;
 mod http_request_path;
 mod net;

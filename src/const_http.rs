@@ -37,6 +37,8 @@ pub const TRACE_LEN: usize = const_len(TRACE);
 pub const PATCH: &[u8] = b"PATCH";
 pub const PATCH_LEN: usize = const_len(PATCH);
 
+pub const CONTENT_LENGTH: &[u8] = b"Content-Length: ";
+
 pub const CRLF: &[u8] = b"\r\n";
 pub const CRLF_LEN: usize = 2;
 pub const CRLFCRLF: &[u8] = b"\r\n\r\n";
@@ -57,5 +59,5 @@ pub const HTTP_405_NOTALLOWED_LEN: usize = const_len(HTTP_405_NOTALLOWED);
 pub const HTTP_500_NOTFOUND: &[u8] = b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
 pub const HTTP_500_NOTFOUND_LEN: usize = const_len(HTTP_500_NOTFOUND);
 
-pub const EXAMPLE_HTTP_RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 15\r\nContent-Type: text/plain\r\nServer: F\r\nDate: Wed, 24 Feb 2021 12:00:00 GMT\r\n\r\nHello, World!";
+pub const EXAMPLE_HTTP_RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 13\r\nContent-Type: text/plain\r\nServer: ?\r\nDate: Wed, 24 Feb 2021 12:00:00 GMT\r\n\r\nHello, World!";
 pub const EXAMPLE_HTTP_RESPONSE_LEN: usize = const_len(EXAMPLE_HTTP_RESPONSE);

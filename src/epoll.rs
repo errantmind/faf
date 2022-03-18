@@ -77,7 +77,7 @@ pub fn go(port: u16, cb: CallbackFunction) {
 #[inline(never)]
 fn threaded_worker(
    port: u16,
-   cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8, u32) -> usize,
+   cb: CallbackFunction,
    cpu_core: i32,
 ) {
    let (listener_fd, _, _) = net::get_listener_fd(port);

@@ -1,20 +1,22 @@
 // This particular file is LICENSED AS Unlicense (https://unlicense.org/)
 
-const DIGITS_LUT: [char; 200] = [
-   '0', '0', '0', '1', '0', '2', '0', '3', '0', '4', '0', '5', '0', '6', '0', '7', '0', '8', '0', '9', '1', '0', '1',
-   '1', '1', '2', '1', '3', '1', '4', '1', '5', '1', '6', '1', '7', '1', '8', '1', '9', '2', '0', '2', '1', '2', '2',
-   '2', '3', '2', '4', '2', '5', '2', '6', '2', '7', '2', '8', '2', '9', '3', '0', '3', '1', '3', '2', '3', '3', '3',
-   '4', '3', '5', '3', '6', '3', '7', '3', '8', '3', '9', '4', '0', '4', '1', '4', '2', '4', '3', '4', '4', '4', '5',
-   '4', '6', '4', '7', '4', '8', '4', '9', '5', '0', '5', '1', '5', '2', '5', '3', '5', '4', '5', '5', '5', '6', '5',
-   '7', '5', '8', '5', '9', '6', '0', '6', '1', '6', '2', '6', '3', '6', '4', '6', '5', '6', '6', '6', '7', '6', '8',
-   '6', '9', '7', '0', '7', '1', '7', '2', '7', '3', '7', '4', '7', '5', '7', '6', '7', '7', '7', '8', '7', '9', '8',
-   '0', '8', '1', '8', '2', '8', '3', '8', '4', '8', '5', '8', '6', '8', '7', '8', '8', '8', '9', '9', '0', '9', '1',
-   '9', '2', '9', '3', '9', '4', '9', '5', '9', '6', '9', '7', '9', '8', '9', '9',
+const DIGITS_LUT: [u8; 200] = [
+   b'0', b'0', b'0', b'1', b'0', b'2', b'0', b'3', b'0', b'4', b'0', b'5', b'0', b'6', b'0', b'7', b'0', b'8', b'0',
+   b'9', b'1', b'0', b'1', b'1', b'1', b'2', b'1', b'3', b'1', b'4', b'1', b'5', b'1', b'6', b'1', b'7', b'1', b'8',
+   b'1', b'9', b'2', b'0', b'2', b'1', b'2', b'2', b'2', b'3', b'2', b'4', b'2', b'5', b'2', b'6', b'2', b'7', b'2',
+   b'8', b'2', b'9', b'3', b'0', b'3', b'1', b'3', b'2', b'3', b'3', b'3', b'4', b'3', b'5', b'3', b'6', b'3', b'7',
+   b'3', b'8', b'3', b'9', b'4', b'0', b'4', b'1', b'4', b'2', b'4', b'3', b'4', b'4', b'4', b'5', b'4', b'6', b'4',
+   b'7', b'4', b'8', b'4', b'9', b'5', b'0', b'5', b'1', b'5', b'2', b'5', b'3', b'5', b'4', b'5', b'5', b'5', b'6',
+   b'5', b'7', b'5', b'8', b'5', b'9', b'6', b'0', b'6', b'1', b'6', b'2', b'6', b'3', b'6', b'4', b'6', b'5', b'6',
+   b'6', b'6', b'7', b'6', b'8', b'6', b'9', b'7', b'0', b'7', b'1', b'7', b'2', b'7', b'3', b'7', b'4', b'7', b'5',
+   b'7', b'6', b'7', b'7', b'7', b'8', b'7', b'9', b'8', b'0', b'8', b'1', b'8', b'2', b'8', b'3', b'8', b'4', b'8',
+   b'5', b'8', b'6', b'8', b'7', b'8', b'8', b'8', b'9', b'9', b'0', b'9', b'1', b'9', b'2', b'9', b'3', b'9', b'4',
+   b'9', b'5', b'9', b'6', b'9', b'7', b'9', b'8', b'9', b'9',
 ];
 
 // Convert u64 to ascii string representation to bytes. This is useful for Content-Length
 #[inline]
-pub fn u64toa(buf: &mut [i8], value: u64) -> i64 {
+pub fn u64toa(buf: &mut [u8], value: u64) -> usize {
    let mut index: usize = 0;
    if value < 100000000 {
       let v: u32 = (value) as u32;
@@ -23,21 +25,21 @@ pub fn u64toa(buf: &mut [i8], value: u64) -> i64 {
          let d2: u32 = (v % 100) << 1;
 
          if v >= 1000 {
-            buf[index] = DIGITS_LUT[d1 as usize] as i8;
+            buf[index] = DIGITS_LUT[d1 as usize];
             index += 1;
          }
 
          if v >= 100 {
-            buf[index] = DIGITS_LUT[d1 as usize + 1] as i8;
+            buf[index] = DIGITS_LUT[d1 as usize + 1];
             index += 1;
          }
 
          if v >= 10 {
-            buf[index] = DIGITS_LUT[d2 as usize] as i8;
+            buf[index] = DIGITS_LUT[d2 as usize];
             index += 1;
          }
 
-         buf[index] = DIGITS_LUT[d2 as usize + 1] as i8;
+         buf[index] = DIGITS_LUT[d2 as usize + 1];
          index += 1;
       } else {
          let b: u32 = v / 10000;
@@ -50,38 +52,38 @@ pub fn u64toa(buf: &mut [i8], value: u64) -> i64 {
          let d4: u32 = (c % 100) << 1;
 
          if value >= 10000000 {
-            buf[index] = DIGITS_LUT[d1 as usize] as i8;
+            buf[index] = DIGITS_LUT[d1 as usize];
             index += 1;
          }
 
          if value >= 1000000 {
-            buf[index] = DIGITS_LUT[d1 as usize + 1] as i8;
+            buf[index] = DIGITS_LUT[d1 as usize + 1];
             index += 1;
          }
 
          if value >= 100000 {
-            buf[index] = DIGITS_LUT[d2 as usize] as i8;
+            buf[index] = DIGITS_LUT[d2 as usize];
             index += 1;
          }
 
-         buf[index] = DIGITS_LUT[d2 as usize + 1] as i8;
+         buf[index] = DIGITS_LUT[d2 as usize + 1];
          index += 1;
 
-         buf[index] = DIGITS_LUT[d3 as usize] as i8;
+         buf[index] = DIGITS_LUT[d3 as usize];
          index += 1;
 
-         buf[index] = DIGITS_LUT[d3 as usize + 1] as i8;
+         buf[index] = DIGITS_LUT[d3 as usize + 1];
          index += 1;
 
-         buf[index] = DIGITS_LUT[d4 as usize] as i8;
+         buf[index] = DIGITS_LUT[d4 as usize];
          index += 1;
 
-         buf[index] = DIGITS_LUT[d4 as usize + 1] as i8;
+         buf[index] = DIGITS_LUT[d4 as usize + 1];
          index += 1;
       }
    }
 
-   index as i64
+   index
 }
 
 // Convert u8 to ascii string representation to bytes.
@@ -96,16 +98,16 @@ pub fn u8toa(out_buf_start: *const u8, value: u8) -> usize {
 
    unsafe {
       if v >= 100 {
-         *buf_walker = *DIGITS_LUT.get_unchecked(d1 as usize + 1) as u8;
+         *buf_walker = *DIGITS_LUT.get_unchecked(d1 as usize + 1);
          buf_walker = buf_walker.add(1);
       }
 
       if v >= 10 {
-         *buf_walker = *DIGITS_LUT.get_unchecked(d2 as usize) as u8;
+         *buf_walker = *DIGITS_LUT.get_unchecked(d2 as usize);
          buf_walker = buf_walker.add(1);
       }
 
-      *buf_walker = *DIGITS_LUT.get_unchecked(d2 as usize + 1) as u8;
+      *buf_walker = *DIGITS_LUT.get_unchecked(d2 as usize + 1);
       buf_walker = buf_walker.add(1);
    }
 
