@@ -214,6 +214,7 @@ fn threaded_worker(
                            path as *const u8,
                            path_len,
                            resbuf_start_address.add(response_buffer_filled_total) as *mut _,
+                           RES_BUFF_SIZE - response_buffer_filled_total as usize,
                            HTTP_DATE.as_ptr(),
                            *ip_address_cache.get_unchecked_mut(cur_fd as usize),
                         )

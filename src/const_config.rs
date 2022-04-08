@@ -50,8 +50,8 @@ pub const MAX_CONN: usize = 1024;
 // the buffer size of the request buffer. Currently set to 4096 bytes (most common page size)
 pub const REQ_BUFF_SIZE: usize = 4096;
 
-// the buffer size of both the response buffers. Currently set to 4096 bytes (most common page size)
-pub const RES_BUFF_SIZE: usize = 4096;
+// the buffer size of both the response buffers. Currently set to 262144 bytes
+pub const RES_BUFF_SIZE: usize = 1 << 21;
 
 // our syscall to wait for epoll events will timeout every 1ms. This is marginally faster in some cases than a longer timeout
 pub const EPOLL_TIMEOUT_MILLIS: isize = 1;

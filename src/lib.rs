@@ -17,7 +17,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 #![allow(clippy::missing_safety_doc, clippy::uninit_assumed_init, dead_code)]
-#![feature(const_fn_trait_bound, const_size_of_val, core_intrinsics, ptr_const_cast)]
+#![feature(const_size_of_val, core_intrinsics, ptr_const_cast)]
 
 pub mod const_config;
 pub mod const_http;
@@ -41,10 +41,12 @@ pub mod util;
 ///   path_len: usize,
 ///
 ///   response_buffer: *mut u8,
+/// 
+///   response_buffer_remaining: usize
 ///
 ///   date_buff: *const u8,
 ///
 ///   ip_addr: u32
 ///
 /// ) -> bytes_written_to_response_buffer: usize
-pub type CallbackFunction = fn(*const u8, usize, *const u8, usize, *mut u8, *const u8, u32) -> usize;
+pub type CallbackFunction = fn(*const u8, usize, *const u8, usize, *mut u8, usize, *const u8, u32) -> usize;
