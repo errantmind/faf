@@ -199,6 +199,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                }
 
                if request_buffer_offset == 0 || response_buffer_filled_total == 0 {
+                  *req_buf_cur_position = req_buf_start_address;
+                  *residual = 0;
                   net::close_connection(epfd, cur_fd as isize);
                   continue;
                } else if request_buffer_offset == (read + *residual as isize) {
@@ -206,7 +208,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   *residual = 0;
                } else {
                   *req_buf_cur_position += read;
-                  *residual = (read - request_buffer_offset) as usize;
+                  *residual += (read - request_buffer_offset) as usize;
                }
 
                let wrote = sys_call!(
@@ -218,14 +220,20 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
                if likely(wrote == response_buffer_filled_total) {
                } else if unlikely(-wrote == EAGAIN as isize || -wrote == EINTR as isize) {
+                  *req_buf_cur_position = req_buf_start_address;
+                  *residual = 0;
                   net::close_connection(epfd, cur_fd as isize);
                   break;
                } else {
+                  *req_buf_cur_position = req_buf_start_address;
+                  *residual = 0;
                   net::close_connection(epfd, cur_fd as isize);
                   continue;
                }
             } else if unlikely(-read == EAGAIN as isize || -read == EINTR as isize) {
             } else {
+               *req_buf_cur_position = req_buf_start_address;
+               *residual = 0;
                net::close_connection(epfd, cur_fd as isize);
             }
          }
