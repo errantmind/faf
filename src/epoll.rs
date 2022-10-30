@@ -24,6 +24,7 @@ use crate::net;
 use crate::sys_call;
 use core::intrinsics::{likely, unlikely};
 use core::ops::Add;
+use core::ops::Sub;
 
 #[repr(C)]
 pub union epoll_data {
@@ -110,6 +111,10 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
       });
    }
 
+   // If we receive part of a request due to a split read, we track how many bytes were unparsable so
+   // this number of bytes can be prepended to the next time we try to parse the buffer
+   let mut reqbuf_residual: [usize; MAX_CONN] = unsafe { core::mem::zeroed() };
+
    let mut resbuf: [u8; RES_BUFF_SIZE] = unsafe { core::mem::zeroed() };
    let resbuf_start_address = &mut resbuf[0] as *mut _ as isize;
 
@@ -126,12 +131,14 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
          let cur_fd = unsafe { (*epoll_events.get_unchecked(index as usize)).data.fd } as isize;
          let req_buf_start_address = (&mut reqbuf[0] as *const u8 as isize).add(cur_fd * REQ_BUFF_SIZE as isize);
          let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
+         let residual = unsafe { reqbuf_residual.get_unchecked_mut(cur_fd as usize) };
 
          if cur_fd == listener_fd {
             let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd as isize, 0, 0);
 
             if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
                *req_buf_cur_position = req_buf_start_address;
+               *residual = 0;
                net::setup_connection(incoming_fd, cpu_core as i32);
                saved_event.data.fd = incoming_fd as i32;
 
@@ -146,8 +153,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                net::close_connection(epfd, cur_fd as isize);
             }
          } else {
-            let buffer_used = *req_buf_cur_position - req_buf_start_address;
-            let buffer_remaining = REQ_BUFF_SIZE as isize - buffer_used;
+            let buffer_remaining = REQ_BUFF_SIZE as isize - (*req_buf_cur_position - req_buf_start_address);
 
             let read = sys_call!(SYS_READ as isize, cur_fd, *req_buf_cur_position, buffer_remaining);
 
@@ -155,7 +161,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                let mut request_buffer_offset = 0;
                let mut response_buffer_filled_total = 0;
 
-               while request_buffer_offset != (read + buffer_used) {
+               while request_buffer_offset != (read + *residual as isize) {
                   let mut method: *const i8 = core::ptr::null_mut();
                   let mut method_len = 0;
                   let mut path: *const i8 = core::ptr::null_mut();
@@ -163,8 +169,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
                   let request_buffer_bytes_parsed = unsafe {
                      http_request_path::parse_request_path_pipelined_simd(
-                        req_buf_start_address.add(request_buffer_offset) as *const _,
-                        read as usize + buffer_used as usize - request_buffer_offset as usize,
+                        req_buf_cur_position.sub(*residual as isize).add(request_buffer_offset) as *const _,
+                        read as usize + *residual - request_buffer_offset as usize,
                         &mut method,
                         &mut method_len,
                         &mut path,
@@ -193,13 +199,14 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                }
 
                if request_buffer_offset == 0 || response_buffer_filled_total == 0 {
-                  *req_buf_cur_position = req_buf_start_address;
                   net::close_connection(epfd, cur_fd as isize);
                   continue;
-               } else if request_buffer_offset == (read + buffer_used) {
+               } else if request_buffer_offset == (read + *residual as isize) {
                   *req_buf_cur_position = req_buf_start_address;
+                  *residual = 0;
                } else {
                   *req_buf_cur_position += read;
+                  *residual = (read - request_buffer_offset) as usize;
                }
 
                let wrote = sys_call!(
@@ -211,19 +218,14 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
                if likely(wrote == response_buffer_filled_total) {
                } else if unlikely(-wrote == EAGAIN as isize || -wrote == EINTR as isize) {
-                  {
-                     *req_buf_cur_position = req_buf_start_address;
-                     net::close_connection(epfd, cur_fd as isize);
-                     break;
-                  }
+                  net::close_connection(epfd, cur_fd as isize);
+                  break;
                } else {
-                  *req_buf_cur_position = req_buf_start_address;
                   net::close_connection(epfd, cur_fd as isize);
                   continue;
                }
             } else if unlikely(-read == EAGAIN as isize || -read == EINTR as isize) {
             } else {
-               *req_buf_cur_position = req_buf_start_address;
                net::close_connection(epfd, cur_fd as isize);
             }
          }
