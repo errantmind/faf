@@ -191,17 +191,17 @@ pub fn setup_connection(fd: isize, core: i32) {
    //    core::mem::size_of_val(&OPTVAL_BUSYPOLL) as isize
    // );
 
-   sys_call!(SYS_FCNTL as isize, fd as isize, F_SETFL, O_NONBLOCK);
+   sys_call!(SYS_FCNTL as isize, fd, F_SETFL, O_NONBLOCK);
 }
 
 #[inline]
 pub fn set_blocking(fd: isize) {
-   sys_call!(SYS_FCNTL as isize, fd as isize, F_SETFL, 0);
+   sys_call!(SYS_FCNTL as isize, fd, F_SETFL, 0);
 }
 
 #[inline]
 pub fn set_nonblocking(fd: isize) {
-   sys_call!(SYS_FCNTL as isize, fd as isize, F_SETFL, O_NONBLOCK);
+   sys_call!(SYS_FCNTL as isize, fd, F_SETFL, O_NONBLOCK);
 }
 
 #[inline(always)]

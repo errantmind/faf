@@ -40,7 +40,23 @@ pub struct epoll_event {
    pub data: epoll_data,
 }
 
-static mut HTTP_DATE: [u8; 35] = http_date::get_buff_with_date();
+#[repr(align(64))]
+struct AlignedHttpDate([u8; 35]);
+
+#[repr(align(64))]
+struct AlignedEpollEvents([epoll_event; MAX_EPOLL_EVENTS_RETURNED]);
+
+#[repr(align(64))]
+struct AlignedEpollEvent(epoll_event);
+
+#[repr(align(64))]
+struct ReqBufAligned([u8; REQ_BUFF_SIZE * MAX_CONN]);
+
+#[repr(align(64))]
+struct ResBufAligned([u8; RES_BUFF_SIZE]);
+
+
+static mut HTTP_DATE: AlignedHttpDate = AlignedHttpDate(http_date::get_buff_with_date());
 
 #[inline(never)]
 pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize) {
@@ -49,7 +65,7 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
 
    // Initialize the DATE before launching workers
    unsafe {
-      http_date::get_http_date(&mut HTTP_DATE);
+      http_date::get_http_date(&mut HTTP_DATE.0);
    }
 
    let num_cpu_cores = crate::util::get_num_logical_cpus();
@@ -66,12 +82,19 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
       });
    }
 
-   loop {
-      unsafe {
-         http_date::get_http_date(&mut HTTP_DATE);
+   {
+      // Update HTTP date every second
+
+      let sleep_time = http_date::timespec {tv_sec: 1, tv_nsec: 0};
+      let sleep_remaining = http_date::timespec {tv_sec: 0, tv_nsec: 0};
+      loop {
+         unsafe {
+            http_date::get_http_date(&mut HTTP_DATE.0);
+         }
+         sys_call!(SYS_NANOSLEEP as isize, &sleep_time as *const _ as isize, &sleep_remaining as *const _ as isize);
       }
-      std::thread::sleep(core::time::Duration::from_secs(1));
    }
+
 }
 
 #[inline(never)]
@@ -83,29 +106,29 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
    // Add listener fd to epoll for monitoring
    {
-      let epoll_event_listener = epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN };
+      let epoll_event_listener = AlignedEpollEvent (epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
 
       sys_call!(
          SYS_EPOLL_CTL as isize,
          epfd,
          EPOLL_CTL_ADD as isize,
-         listener_fd as isize,
-         &epoll_event_listener as *const epoll_event as isize
+         listener_fd,
+         &epoll_event_listener.0 as *const epoll_event as isize
       );
    }
 
-   let epoll_events: [epoll_event; MAX_EPOLL_EVENTS_RETURNED] = unsafe { core::mem::zeroed() };
-   let epoll_events_ptr = &epoll_events as *const _ as isize;
+   let epoll_events: AlignedEpollEvents = unsafe { core::mem::zeroed() };
+   let epoll_events_ptr = &epoll_events.0[0] as *const _ as isize;
 
-   let mut saved_event: epoll_event = unsafe { core::mem::zeroed() };
-   saved_event.events = EPOLLIN;
+   let mut saved_event: AlignedEpollEvent = unsafe { core::mem::zeroed() };
+   saved_event.0.events = EPOLLIN;
 
-   let mut reqbuf: [u8; REQ_BUFF_SIZE * MAX_CONN] = unsafe { core::mem::zeroed() };
+   let mut reqbuf: ReqBufAligned = unsafe { core::mem::zeroed() };
 
    // Init state for tracking request buffer position across events
    let mut reqbuf_cur_addr: [isize; MAX_CONN] = unsafe { core::mem::zeroed() };
    {
-      let reqbuf_start_address = &mut reqbuf[0] as *mut _ as isize;
+      let reqbuf_start_address = &mut reqbuf.0[0] as *mut _ as isize;
       (0..reqbuf_cur_addr.len()).for_each(|i| {
          reqbuf_cur_addr[i] = reqbuf_start_address + i as isize * REQ_BUFF_SIZE as isize;
       });
@@ -115,8 +138,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
    // this number of bytes can be prepended to the next time we try to parse the buffer
    let mut reqbuf_residual: [usize; MAX_CONN] = unsafe { core::mem::zeroed() };
 
-   let mut resbuf: [u8; RES_BUFF_SIZE] = unsafe { core::mem::zeroed() };
-   let resbuf_start_address = &mut resbuf[0] as *mut _ as isize;
+   let mut resbuf: ResBufAligned = unsafe { core::mem::zeroed() };
+   let resbuf_start_address = &mut resbuf.0[0] as *mut _ as isize;
 
    loop {
       let num_incoming_events = sys_call!(
@@ -128,34 +151,34 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
       );
 
       for index in 0..num_incoming_events {
-         let cur_fd = unsafe { (*epoll_events.get_unchecked(index as usize)).data.fd } as isize;
-         let req_buf_start_address = (&mut reqbuf[0] as *const u8 as isize).add(cur_fd * REQ_BUFF_SIZE as isize);
+         let cur_fd = unsafe { (epoll_events.0.get_unchecked(index as usize)).data.fd } as isize;
+         let req_buf_start_address = (&mut reqbuf.0[0] as *const u8 as isize).add(cur_fd * REQ_BUFF_SIZE as isize);
          let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
          let residual = unsafe { reqbuf_residual.get_unchecked_mut(cur_fd as usize) };
 
          if cur_fd == listener_fd {
-            let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd as isize, 0, 0);
+            let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd, 0, 0);
 
             if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
                *req_buf_cur_position = req_buf_start_address;
                *residual = 0;
-               net::setup_connection(incoming_fd, cpu_core as i32);
-               saved_event.data.fd = incoming_fd as i32;
+               net::setup_connection(incoming_fd, cpu_core);
+               saved_event.0.data.fd = incoming_fd as i32;
 
                sys_call!(
                   SYS_EPOLL_CTL as isize,
                   epfd,
                   EPOLL_CTL_ADD as isize,
-                  incoming_fd as isize,
-                  &saved_event as *const epoll_event as isize
+                  incoming_fd,
+                  &saved_event.0 as *const epoll_event as isize
                );
             } else {
-               net::close_connection(epfd, cur_fd as isize);
+               net::close_connection(epfd, cur_fd);
             }
          } else {
             let buffer_remaining = REQ_BUFF_SIZE as isize - (*req_buf_cur_position - req_buf_start_address);
 
-            let read = sys_call!(SYS_READ as isize, cur_fd, *req_buf_cur_position, buffer_remaining);
+            let read = sys_call!(SYS_RECVFROM as isize, cur_fd, *req_buf_cur_position, buffer_remaining, 0, 0, 0);
 
             if likely(read > 0) {
                let mut request_buffer_offset = 0;
@@ -179,7 +202,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   };
 
                   if request_buffer_bytes_parsed > 0 {
-                     request_buffer_offset += request_buffer_bytes_parsed as isize;
+                     request_buffer_offset += request_buffer_bytes_parsed;
 
                      let response_buffer_filled = unsafe {
                         cb(
@@ -188,7 +211,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                            path as *const u8,
                            path_len,
                            resbuf_start_address.add(response_buffer_filled_total) as *mut _,
-                           HTTP_DATE.as_ptr(),
+                           HTTP_DATE.0.as_ptr(),
                         )
                      };
 
@@ -201,7 +224,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                if request_buffer_offset == 0 || response_buffer_filled_total == 0 {
                   *req_buf_cur_position = req_buf_start_address;
                   *residual = 0;
-                  net::close_connection(epfd, cur_fd as isize);
+                  net::close_connection(epfd, cur_fd);
                   continue;
                } else if request_buffer_offset == (read + *residual as isize) {
                   *req_buf_cur_position = req_buf_start_address;
@@ -211,30 +234,40 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   *residual += (read - request_buffer_offset) as usize;
                }
 
+               // let wrote = sys_call!(
+               //    SYS_WRITE as isize,
+               //    cur_fd,
+               //    resbuf_start_address,
+               //    response_buffer_filled_total
+               // );
+
                let wrote = sys_call!(
-                  SYS_WRITE as isize,
-                  cur_fd as isize,
+                  SYS_SENDTO as isize,
+                  cur_fd,
                   resbuf_start_address,
-                  response_buffer_filled_total as isize
+                  response_buffer_filled_total,
+                  0,
+                  0,
+                  0
                );
 
                if likely(wrote == response_buffer_filled_total) {
                } else if unlikely(-wrote == EAGAIN as isize || -wrote == EINTR as isize) {
                   *req_buf_cur_position = req_buf_start_address;
                   *residual = 0;
-                  net::close_connection(epfd, cur_fd as isize);
+                  net::close_connection(epfd, cur_fd);
                   break;
                } else {
                   *req_buf_cur_position = req_buf_start_address;
                   *residual = 0;
-                  net::close_connection(epfd, cur_fd as isize);
+                  net::close_connection(epfd, cur_fd);
                   continue;
                }
             } else if unlikely(-read == EAGAIN as isize || -read == EINTR as isize) {
             } else {
                *req_buf_cur_position = req_buf_start_address;
                *residual = 0;
-               net::close_connection(epfd, cur_fd as isize);
+               net::close_connection(epfd, cur_fd);
             }
          }
       }

@@ -58,3 +58,4 @@ pub const EPOLL_TIMEOUT_MILLIS: isize = 1;
 
 // 4096 bytes page size / 12 byte epoll_event size = ~340. This size reduces page faults
 pub const MAX_EPOLL_EVENTS_RETURNED: usize = 340;
+

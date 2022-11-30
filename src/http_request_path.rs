@@ -36,9 +36,9 @@ use core::intrinsics::{likely, unlikely};
 
 const SPACE: i8 = b' ' as i8;
 
-#[repr(C, align(64))]
-pub struct aligned_pattern([u8; 2]);
-const EOL_PATTERN: aligned_pattern = aligned_pattern(*b"\r\n");
+#[repr(align(64))]
+pub struct AlignedPattern([u8; 2]);
+const EOL_PATTERN: AlignedPattern = AlignedPattern(*b"\r\n");
 
 #[inline]
 pub unsafe fn find_sequence_simd(buf_start: *const i8, buf_end: *const i8) -> *const i8 {

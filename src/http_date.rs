@@ -18,7 +18,7 @@ pub const fn get_buff_with_date() -> [u8; 35] {
 }
 
 #[repr(C, align(32))]
-struct timespec {
+pub struct timespec {
    pub tv_sec: i64,
    pub tv_nsec: i64,
 }
