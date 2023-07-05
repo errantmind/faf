@@ -234,13 +234,6 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   *residual += (read - request_buffer_offset) as usize;
                }
 
-               // let wrote = sys_call!(
-               //    SYS_WRITE as isize,
-               //    cur_fd,
-               //    resbuf_start_address,
-               //    response_buffer_filled_total
-               // );
-
                let wrote = sys_call!(
                   SYS_SENDTO as isize,
                   cur_fd,
