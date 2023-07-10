@@ -37,10 +37,5 @@ Aside: a `no_std` version of this project compiles to a total of only ~400 lines
 ## Contributions
 Contributions are welcome, but please discuss before submitting a pull request. If a discussion leads to a pull request, please reference the \#issue in the pull request. Unsolicited pull requests will not be reviewed nor merged.
 
-Any and all contributions, unless otherwise specified, will be licensed under the license specified by this project (below). All contributors agree to automatically and irrevocably relicense their code to match the project license if the project license changes. All contribitors, by submitting contributions as a pull request (or in any other form), agree to these terms. Any license changes will occur as a bump in versioning and the previous license will remain in effect for the previous version.
-
-
 ## License
 All code is licensed under AGPL 3.0 unless an individual source file specifies otherwise.
-
-If you don't like the license, convince me.
