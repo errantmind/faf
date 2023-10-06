@@ -55,11 +55,13 @@ struct ReqBufAligned([u8; REQ_BUFF_SIZE * MAX_CONN]);
 #[repr(align(64))]
 struct ResBufAligned([u8; RES_BUFF_SIZE]);
 
-
 static mut HTTP_DATE: AlignedHttpDate = AlignedHttpDate(http_date::get_buff_with_date());
 
-#[inline(never)]
-pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize) {
+#[inline(always)]
+pub fn go<F>(port: u16, cb: F) -> !
+where
+   F: Fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize + Send + 'static + Clone + Copy,
+{
    // Attempt to set a higher process priority, indicated by a negative number. -20 is the highest possible
    sys_call!(SYS_SETPRIORITY as isize, PRIO_PROCESS as isize, 0, -19);
 
@@ -78,6 +80,7 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
          // Unshare the file descriptor table between threads to keep the fd number itself low, otherwise all
          // threads will share the same file descriptor table
          sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
+
          threaded_worker(port, cb, core as i32);
       });
    }
@@ -85,20 +88,21 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
    {
       // Update HTTP date every second
 
-      let sleep_time = http_date::timespec {tv_sec: 1, tv_nsec: 0};
-      let sleep_remaining = http_date::timespec {tv_sec: 0, tv_nsec: 0};
+      let sleep_time = http_date::timespec { tv_sec: 1, tv_nsec: 0 };
       loop {
          unsafe {
             http_date::get_http_date(&mut HTTP_DATE.0);
          }
-         sys_call!(SYS_NANOSLEEP as isize, &sleep_time as *const _ as isize, &sleep_remaining as *const _ as isize);
+         sys_call!(SYS_NANOSLEEP as isize, &sleep_time as *const _ as isize, 0);
       }
    }
-
 }
 
-#[inline(never)]
-fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize, cpu_core: i32) {
+#[inline(always)]
+fn threaded_worker<F>(port: u16, cb: F, cpu_core: i32) -> !
+where
+   F: Fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize + Send + 'static + Clone + Copy,
+{
    let (listener_fd, _, _) = net::get_listener_fd(port);
    net::setup_connection(listener_fd, cpu_core);
 
@@ -106,7 +110,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
    // Add listener fd to epoll for monitoring
    {
-      let epoll_event_listener = AlignedEpollEvent (epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
+      let epoll_event_listener =
+         AlignedEpollEvent(epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
 
       sys_call!(
          SYS_EPOLL_CTL as isize,
@@ -152,6 +157,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
       for index in 0..num_incoming_events {
          let cur_fd = unsafe { (epoll_events.0.get_unchecked(index as usize)).data.fd } as isize;
+
          let req_buf_start_address = (&mut reqbuf.0[0] as *const u8 as isize).add(cur_fd * REQ_BUFF_SIZE as isize);
          let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
          let residual = unsafe { reqbuf_residual.get_unchecked_mut(cur_fd as usize) };
@@ -234,15 +240,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   *residual += (read - request_buffer_offset) as usize;
                }
 
-               let wrote = sys_call!(
-                  SYS_SENDTO as isize,
-                  cur_fd,
-                  resbuf_start_address,
-                  response_buffer_filled_total,
-                  0,
-                  0,
-                  0
-               );
+               let wrote =
+                  sys_call!(SYS_SENDTO as isize, cur_fd, resbuf_start_address, response_buffer_filled_total, 0, 0, 0);
 
                if likely(wrote == response_buffer_filled_total) {
                } else if unlikely(-wrote == EAGAIN as isize || -wrote == EINTR as isize) {

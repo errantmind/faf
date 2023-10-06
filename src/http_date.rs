@@ -8,16 +8,14 @@
 
 #[inline(always)]
 pub const fn get_buff_with_date() -> [u8; 35] {
-   let buf: [u8; 35] = [
+   [
       // Writing as the following only gives us a reference: b"Date: Thu, 01 Jan 1970 00:00:00 GMT"
       b'D', b'a', b't', b'e', b':', b' ', b' ', b' ', b' ', b',', b' ', b'0', b'0', b' ', b' ', b' ', b' ', b' ', b'0',
       b'0', b'0', b'0', b' ', b'0', b'0', b':', b'0', b'0', b':', b'0', b'0', b' ', b'G', b'M', b'T',
-   ];
-
-   buf
+   ]
 }
 
-#[repr(C, align(32))]
+#[repr(C, align(64))]
 pub struct timespec {
    pub tv_sec: i64,
    pub tv_nsec: i64,
