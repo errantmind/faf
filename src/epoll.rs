@@ -55,7 +55,6 @@ struct ReqBufAligned([u8; REQ_BUFF_SIZE * MAX_CONN]);
 #[repr(align(64))]
 struct ResBufAligned([u8; RES_BUFF_SIZE]);
 
-
 static mut HTTP_DATE: AlignedHttpDate = AlignedHttpDate(http_date::get_buff_with_date());
 
 #[inline(never)]
@@ -85,8 +84,8 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
    {
       // Update HTTP date every second
 
-      let sleep_time = http_date::timespec {tv_sec: 1, tv_nsec: 0};
-      let sleep_remaining = http_date::timespec {tv_sec: 0, tv_nsec: 0};
+      let sleep_time = http_date::timespec { tv_sec: 1, tv_nsec: 0 };
+      let sleep_remaining = http_date::timespec { tv_sec: 0, tv_nsec: 0 };
       loop {
          unsafe {
             http_date::get_http_date(&mut HTTP_DATE.0);
@@ -94,7 +93,6 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
          sys_call!(SYS_NANOSLEEP as isize, &sleep_time as *const _ as isize, &sleep_remaining as *const _ as isize);
       }
    }
-
 }
 
 #[inline(never)]
@@ -106,7 +104,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
 
    // Add listener fd to epoll for monitoring
    {
-      let epoll_event_listener = AlignedEpollEvent (epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
+      let epoll_event_listener =
+         AlignedEpollEvent(epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
 
       sys_call!(
          SYS_EPOLL_CTL as isize,
@@ -141,14 +140,23 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
    let mut resbuf: ResBufAligned = unsafe { core::mem::zeroed() };
    let resbuf_start_address = &mut resbuf.0[0] as *mut _ as isize;
 
+   let mut epoll_wait_type = EPOLL_TIMEOUT_BLOCKING;
+
    loop {
       let num_incoming_events = sys_call!(
          SYS_EPOLL_WAIT as isize,
          epfd,
          epoll_events_ptr,
          MAX_EPOLL_EVENTS_RETURNED as isize,
-         EPOLL_TIMEOUT_MILLIS
+         epoll_wait_type
       );
+
+      if num_incoming_events <= 0 {
+         epoll_wait_type = EPOLL_TIMEOUT_BLOCKING;
+         continue;
+      }
+
+      epoll_wait_type = EPOLL_TIMEOUT_IMMEDIATE_RETURN;
 
       for index in 0..num_incoming_events {
          let cur_fd = unsafe { (epoll_events.0.get_unchecked(index as usize)).data.fd } as isize;
@@ -234,15 +242,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   *residual += (read - request_buffer_offset) as usize;
                }
 
-               let wrote = sys_call!(
-                  SYS_SENDTO as isize,
-                  cur_fd,
-                  resbuf_start_address,
-                  response_buffer_filled_total,
-                  0,
-                  0,
-                  0
-               );
+               let wrote =
+                  sys_call!(SYS_SENDTO as isize, cur_fd, resbuf_start_address, response_buffer_filled_total, 0, 0, 0);
 
                if likely(wrote == response_buffer_filled_total) {
                } else if unlikely(-wrote == EAGAIN as isize || -wrote == EINTR as isize) {
