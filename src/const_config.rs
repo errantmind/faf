@@ -47,10 +47,10 @@ macro_rules! const_concat_bytes {
 /// faf spawns one thread per core, meaning each thread can handle 1024 connections
 pub const MAX_CONN: usize = 1024;
 
-/// the buffer size of the request buffer. Currently set to 4096 bytes (most common page size)
+/// the buffer size of the request buffer. Currently set to 4096 bytes
 pub const REQ_BUFF_SIZE: usize = 4096;
 
-/// the buffer size of both the response buffers. Currently set to 4096 bytes (most common page size)
+/// the buffer size of both the response buffers. Currently set to 4096 bytes
 pub const RES_BUFF_SIZE: usize = 4096;
 
 /// our syscall to wait for epoll events will block indefinitely when this value is used
@@ -59,5 +59,5 @@ pub const EPOLL_TIMEOUT_BLOCKING: isize = -1;
 /// our syscall to wait for epoll events will return immediately when this value is used
 pub const EPOLL_TIMEOUT_IMMEDIATE_RETURN: isize = 0;
 
-/// 4096 bytes page size / 12 byte epoll_event size = ~340. This size reduces page faults
+/// 4096 bytes / 12 byte epoll_event size = ~340.
 pub const MAX_EPOLL_EVENTS_RETURNED: usize = 340;

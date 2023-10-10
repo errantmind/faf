@@ -223,3 +223,31 @@ pub fn close_connection(epfd: isize, fd: isize) {
 
    sys_call!(SYS_CLOSE as isize, fd);
 }
+
+// #[inline(always)]
+// pub fn debug_incoming_cpu(incoming_fd: isize, listener_fd: isize, cpu_core: i32) {
+//    let incoming_cpu: i32 = -1;
+//    let incoming_ret = sys_call!(
+//       SYS_GETSOCKOPT as isize,
+//       incoming_fd,
+//       SOL_SOCKET as isize,
+//       SO_INCOMING_CPU as isize,
+//       &incoming_cpu as *const _ as _,
+//       &core::mem::size_of_val(&incoming_cpu) as *const _ as _
+//    );
+
+//    let listener_cpu: i32 = -1;
+//    let listener_ret = sys_call!(
+//       SYS_GETSOCKOPT as isize,
+//       listener_fd,
+//       SOL_SOCKET as isize,
+//       SO_INCOMING_CPU as isize,
+//       &listener_cpu as *const _ as _,
+//       &core::mem::size_of_val(&listener_cpu) as *const _ as _
+//    );
+
+//    println!(
+//       "fd: {}, received request on core {} with ret value {} and {}, should be core {}, listener_fd is on core {}",
+//       incoming_fd, incoming_cpu, incoming_ret, listener_ret, cpu_core, listener_cpu
+//    );
+// }
