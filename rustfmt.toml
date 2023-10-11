@@ -1,4 +1,4 @@
 use_small_heuristics = "Max"
 tab_spaces = 3
-max_width = 120
+max_width = 140
 reorder_imports = true

@@ -57,6 +57,8 @@ struct ResBufAligned([u8; RES_BUFF_SIZE]);
 
 static mut HTTP_DATE: AlignedHttpDate = AlignedHttpDate(http_date::get_buff_with_date());
 
+static mut NUM_WORKERS_INITED: usize = 0;
+
 #[inline(never)]
 pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize) {
    // Attempt to set a higher process priority, indicated by a negative number. -20 is the highest possible
@@ -72,48 +74,57 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
       let thread_name = format!("faf{}", core);
       let thread_builder = std::thread::Builder::new().name(thread_name).stack_size(1024 * 1024 * 8);
       let _ = thread_builder.spawn(move || {
-         crate::util::set_current_thread_cpu_affinity_to(core);
-
          // Unshare the file descriptor table between threads to keep the fd number itself low, otherwise all
          // threads will share the same file descriptor table
          sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
-         threaded_worker(port, cb, core as i32);
+         crate::util::set_current_thread_cpu_affinity_to(core);
+         threaded_worker(port, cb, core as i32, num_cpu_cores);
       });
+      // sleep to ensure workers are initialized in sequence. TODO: refactor to use a semaphore instead
+      std::thread::sleep(std::time::Duration::from_millis(5));
    }
 
    {
-      // Update HTTP date every second
-
-      let sleep_time = http_date::timespec { tv_sec: 1, tv_nsec: 0 };
-      let sleep_remaining = http_date::timespec { tv_sec: 0, tv_nsec: 0 };
+      const SLEEP_TIME: http_date::timespec = http_date::timespec { tv_sec: 1, tv_nsec: 0 };
       loop {
          unsafe {
             http_date::get_http_date(&mut HTTP_DATE.0);
          }
-         sys_call!(SYS_NANOSLEEP as isize, &sleep_time as *const _ as isize, &sleep_remaining as *const _ as isize);
+         sys_call!(SYS_NANOSLEEP as isize, &SLEEP_TIME as *const _ as isize, 0);
       }
    }
 }
 
 #[inline(never)]
-fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize, cpu_core: i32) {
+fn threaded_worker(
+   port: u16,
+   cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize,
+   cpu_core: i32,
+   num_cpu_cores: usize,
+) {
    let (listener_fd, _, _) = net::get_listener_fd(port);
-   net::setup_connection(listener_fd, cpu_core);
+   net::setup_connection(listener_fd);
+
+   {
+      // Attach REUSEPORT_CBPF for greater locality
+      unsafe { NUM_WORKERS_INITED += 1 }
+      if cpu_core == 0 {
+         // attach after all workers are initiated. Only need to attach once and it will apply to all the workers' listener sockets.
+         const SLEEP_DURATION: core::time::Duration = std::time::Duration::from_micros(1);
+         while unsafe { NUM_WORKERS_INITED } < num_cpu_cores {
+            // With no sleep, the value in NUM_WORKERS_INITED will never be rechecked.. for some reason beyond me.
+            std::thread::sleep(SLEEP_DURATION);
+         }
+         net::attach_reuseport_cbpf(listener_fd);
+      }
+   }
 
    let epfd = sys_call!(SYS_EPOLL_CREATE1 as isize, 0);
 
    // Add listener fd to epoll for monitoring
    {
-      let epoll_event_listener =
-         AlignedEpollEvent(epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
-
-      sys_call!(
-         SYS_EPOLL_CTL as isize,
-         epfd,
-         EPOLL_CTL_ADD as isize,
-         listener_fd,
-         &epoll_event_listener.0 as *const epoll_event as isize
-      );
+      let epoll_event_listener = AlignedEpollEvent(epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
+      sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, listener_fd, &epoll_event_listener.0 as *const epoll_event as isize);
    }
 
    let epoll_events: AlignedEpollEvents = unsafe { core::mem::zeroed() };
@@ -143,13 +154,8 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
    let mut epoll_wait_type = EPOLL_TIMEOUT_BLOCKING;
 
    loop {
-      let num_incoming_events = sys_call!(
-         SYS_EPOLL_WAIT as isize,
-         epfd,
-         epoll_events_ptr,
-         MAX_EPOLL_EVENTS_RETURNED as isize,
-         epoll_wait_type
-      );
+      let num_incoming_events =
+         sys_call!(SYS_EPOLL_WAIT as isize, epfd, epoll_events_ptr, MAX_EPOLL_EVENTS_RETURNED as isize, epoll_wait_type);
 
       if num_incoming_events <= 0 {
          epoll_wait_type = EPOLL_TIMEOUT_BLOCKING;
@@ -170,16 +176,10 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
             if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
                *req_buf_cur_position = req_buf_start_address;
                *residual = 0;
-               net::setup_connection(incoming_fd, cpu_core);
+               net::setup_connection(incoming_fd);
                saved_event.0.data.fd = incoming_fd as i32;
 
-               sys_call!(
-                  SYS_EPOLL_CTL as isize,
-                  epfd,
-                  EPOLL_CTL_ADD as isize,
-                  incoming_fd,
-                  &saved_event.0 as *const epoll_event as isize
-               );
+               sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, incoming_fd, &saved_event.0 as *const epoll_event as isize);
             } else {
                net::close_connection(epfd, cur_fd);
             }
@@ -242,8 +242,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   *residual += (read - request_buffer_offset) as usize;
                }
 
-               let wrote =
-                  sys_call!(SYS_SENDTO as isize, cur_fd, resbuf_start_address, response_buffer_filled_total, 0, 0, 0);
+               let wrote = sys_call!(SYS_SENDTO as isize, cur_fd, resbuf_start_address, response_buffer_filled_total, 0, 0, 0);
 
                if likely(wrote == response_buffer_filled_total) {
                } else if unlikely(-wrote == EAGAIN as isize || -wrote == EINTR as isize) {

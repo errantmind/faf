@@ -49,9 +49,23 @@ pub struct linger {
    pub l_linger: i32,
 }
 
+#[repr(C)]
+pub struct sock_filter {
+   pub code: u16,
+   pub jt: u8,
+   pub jf: u8,
+   pub k: u32,
+}
+
+#[repr(C)]
+pub struct sock_fprog {
+   pub len: u16,
+   pub filter: *mut sock_filter,
+}
+
 const OPTVAL: isize = 1;
 const OPTVAL_BUSYPOLL: isize = 50;
-const O_NONBLOCK: isize = 2048;
+pub const O_NONBLOCK: isize = 2048;
 const F_SETFL: isize = 4;
 
 #[inline]
@@ -64,14 +78,14 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
       let fd_listener = sys_call!(SYS_SOCKET as isize, AF_INET as isize, SOCK_STREAM as isize, 0);
       let size_of_optval = core::mem::size_of_val(&OPTVAL) as u32;
 
-      sys_call!(
-         SYS_SETSOCKOPT as isize,
-         fd_listener,
-         SOL_SOCKET as isize,
-         SO_REUSEADDR as isize,
-         &OPTVAL as *const _ as _,
-         size_of_optval as isize
-      );
+      // sys_call!(
+      //    SYS_SETSOCKOPT as isize,
+      //    fd_listener,
+      //    SOL_SOCKET as isize,
+      //    SO_REUSEADDR as isize,
+      //    &OPTVAL as *const _ as _,
+      //    size_of_optval as isize
+      // );
 
       sys_call!(
          SYS_SETSOCKOPT as isize,
@@ -82,23 +96,32 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
          size_of_optval as isize
       );
 
-      sys_call!(
-         SYS_SETSOCKOPT as isize,
-         fd_listener,
-         IPPROTO_TCP as isize,
-         TCP_QUICKACK as isize,
-         &OPTVAL as *const _ as _,
-         core::mem::size_of_val(&OPTVAL) as isize
-      );
+      // sys_call!(
+      //    SYS_SETSOCKOPT as isize,
+      //    fd_listener,
+      //    SOL_SOCKET as isize,
+      //    SO_REUSEPORT as isize,
+      //    &OPTVAL as *const isize as _,
+      //    size_of_optval as isize
+      // );
 
-      sys_call!(
-         SYS_SETSOCKOPT as isize,
-         fd_listener,
-         IPPROTO_TCP as isize,
-         TCP_FASTOPEN as isize,
-         &MAX_CONN as *const _ as _,
-         core::mem::size_of_val(&MAX_CONN) as isize
-      );
+      // sys_call!(
+      //    SYS_SETSOCKOPT as isize,
+      //    fd_listener,
+      //    IPPROTO_TCP as isize,
+      //    TCP_QUICKACK as isize,
+      //    &OPTVAL as *const _ as _,
+      //    core::mem::size_of_val(&OPTVAL) as isize
+      // );
+
+      // sys_call!(
+      //    SYS_SETSOCKOPT as isize,
+      //    fd_listener,
+      //    IPPROTO_TCP as isize,
+      //    TCP_FASTOPEN as isize,
+      //    &MAX_CONN as *const _ as _,
+      //    core::mem::size_of_val(&MAX_CONN) as isize
+      // );
 
       // Does not add much throughput, if any. Also, can hide dead connections. Not useful.
       // sys_call!(
@@ -137,7 +160,7 @@ pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
 }
 
 #[inline]
-pub fn setup_connection(fd: isize, core: i32) {
+pub fn setup_connection(fd: isize) {
    //Doesn't help with throughput, just latency per request, and may actually reduce throughput.
    //May be Useful for this test. I'm not entirely convinced though
    sys_call!(
@@ -149,32 +172,20 @@ pub fn setup_connection(fd: isize, core: i32) {
       core::mem::size_of_val(&OPTVAL) as isize
    );
 
-   sys_call!(
-      SYS_SETSOCKOPT as isize,
-      fd,
-      IPPROTO_TCP as isize,
-      TCP_QUICKACK as isize,
-      &OPTVAL as *const _ as _,
-      core::mem::size_of_val(&OPTVAL) as isize
-   );
-
-   // This can be disabled if we are passed, say, '-1' for times we don't want to assign a core affinity
-   #[allow(clippy::collapsible_if)]
-   if core >= 0 {
-      sys_call!(
-         SYS_SETSOCKOPT as isize,
-         fd,
-         SOL_SOCKET as isize,
-         SO_INCOMING_CPU as isize,
-         &core as *const _ as _,
-         core::mem::size_of_val(&core) as isize
-      );
-   }
+   // Since quickack has to be set every time, it isn't worth setting
+   // sys_call!(
+   //    SYS_SETSOCKOPT as isize,
+   //    fd,
+   //    IPPROTO_TCP as isize,
+   //    TCP_QUICKACK as isize,
+   //    &OPTVAL as *const _ as _,
+   //    core::mem::size_of_val(&OPTVAL) as isize
+   // );
 
    //https://stackoverflow.com/a/49900878
    // sys_call!(
    //    SYS_SETSOCKOPT as isize,
-   //    fd as isize,
+   //    fd,
    //    SOL_SOCKET as isize,
    //    SO_ZEROCOPY as isize,
    //    &OPTVAL as *const isize as _,
@@ -191,16 +202,6 @@ pub fn setup_connection(fd: isize, core: i32) {
    //    core::mem::size_of_val(&OPTVAL_BUSYPOLL) as isize
    // );
 
-   sys_call!(SYS_FCNTL as isize, fd, F_SETFL, O_NONBLOCK);
-}
-
-#[inline]
-pub fn set_blocking(fd: isize) {
-   sys_call!(SYS_FCNTL as isize, fd, F_SETFL, 0);
-}
-
-#[inline]
-pub fn set_nonblocking(fd: isize) {
    sys_call!(SYS_FCNTL as isize, fd, F_SETFL, O_NONBLOCK);
 }
 
@@ -224,30 +225,80 @@ pub fn close_connection(epfd: isize, fd: isize) {
    sys_call!(SYS_CLOSE as isize, fd);
 }
 
-// #[inline(always)]
-// pub fn debug_incoming_cpu(incoming_fd: isize, listener_fd: isize, cpu_core: i32) {
-//    let incoming_cpu: i32 = -1;
-//    let incoming_ret = sys_call!(
-//       SYS_GETSOCKOPT as isize,
-//       incoming_fd,
-//       SOL_SOCKET as isize,
-//       SO_INCOMING_CPU as isize,
-//       &incoming_cpu as *const _ as _,
-//       &core::mem::size_of_val(&incoming_cpu) as *const _ as _
-//    );
+#[inline(always)]
+pub fn attach_reuseport_cbpf(fd: isize) {
+   // https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/bpf_common.h
+   // BPF_CLASS
+   const BPF_LD: u16 = 0x00;
+   const BPF_RET: u16 = 0x06;
 
-//    let listener_cpu: i32 = -1;
-//    let listener_ret = sys_call!(
-//       SYS_GETSOCKOPT as isize,
-//       listener_fd,
-//       SOL_SOCKET as isize,
-//       SO_INCOMING_CPU as isize,
-//       &listener_cpu as *const _ as _,
-//       &core::mem::size_of_val(&listener_cpu) as *const _ as _
-//    );
+   // BPF_SIZE
+   const BPF_W: u16 = 0x00;
 
-//    println!(
-//       "fd: {}, received request on core {} with ret value {} and {}, should be core {}, listener_fd is on core {}",
-//       incoming_fd, incoming_cpu, incoming_ret, listener_ret, cpu_core, listener_cpu
-//    );
-// }
+   // BPF_MODE
+   const BPF_ABS: u16 = 0x20;
+
+   // https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/filter.h
+   // BPF_RVAL
+   const BPF_A: u16 = 0x10;
+
+   // SKF
+   const SKF_AD_OFF: i32 = -0x1000;
+   const SKF_AD_CPU: i32 = 36;
+
+   let mut code: [sock_filter; 2] = [
+      sock_filter { code: BPF_LD | BPF_W | BPF_ABS, jt: 0, jf: 0, k: (SKF_AD_OFF + SKF_AD_CPU) as u32 },
+      sock_filter { code: BPF_RET | BPF_A, jt: 0, jf: 0, k: 0 },
+   ];
+
+   let prog = sock_fprog { len: code.len() as u16, filter: code.as_mut_ptr() };
+
+   let ret = sys_call!(
+      SYS_SETSOCKOPT as isize,
+      fd,
+      SOL_SOCKET as isize,
+      SO_ATTACH_REUSEPORT_CBPF as isize,
+      &prog as *const _ as _,
+      core::mem::size_of::<sock_fprog>() as isize
+   );
+
+   //println!("SO_ATTACH_REUSEPORT_CBPF ret: {}, size = {}", ret, core::mem::size_of::<sock_fprog>() as isize);
+}
+
+#[inline(always)]
+pub fn debug_incoming_cpu(incoming_fd: isize, listener_fd: isize, cpu_core: i32) {
+   let incoming_cpu: i32 = -1;
+   let incoming_ret = sys_call!(
+      SYS_GETSOCKOPT as isize,
+      incoming_fd,
+      SOL_SOCKET as isize,
+      SO_INCOMING_CPU as isize,
+      &incoming_cpu as *const _ as _,
+      &core::mem::size_of_val(&incoming_cpu) as *const _ as _
+   );
+
+   let listener_cpu: i32 = -1;
+   let listener_ret = sys_call!(
+      SYS_GETSOCKOPT as isize,
+      listener_fd,
+      SOL_SOCKET as isize,
+      SO_INCOMING_CPU as isize,
+      &listener_cpu as *const _ as _,
+      &core::mem::size_of_val(&listener_cpu) as *const _ as _
+   );
+
+   let incoming_napi_id: i32 = -1;
+   let incoming_napi_id_ret = sys_call!(
+      SYS_GETSOCKOPT as isize,
+      incoming_fd,
+      SOL_SOCKET as isize,
+      SO_INCOMING_NAPI_ID as isize,
+      &incoming_napi_id as *const _ as _,
+      &core::mem::size_of_val(&incoming_napi_id) as *const _ as _
+   );
+
+   println!(
+       "fd: {}, received request on core {} with ret value {}, should be core {}, listener_fd is on core {} with ret value {}, with napi id {} with ret {}",
+       incoming_fd, incoming_cpu, incoming_ret, cpu_core, listener_cpu, listener_ret, incoming_napi_id, incoming_napi_id_ret
+    );
+}
