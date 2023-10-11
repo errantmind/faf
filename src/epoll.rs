@@ -55,17 +55,22 @@ struct ReqBufAligned([u8; REQ_BUFF_SIZE * MAX_CONN]);
 #[repr(align(64))]
 struct ResBufAligned([u8; RES_BUFF_SIZE]);
 
-static mut HTTP_DATE: AlignedHttpDate = AlignedHttpDate(http_date::get_buff_with_date());
+#[repr(C)]
+pub struct timespec_unaligned {
+   pub tv_sec: i64,
+   pub tv_nsec: i64,
+}
+
+#[repr(C, align(64))]
+struct itimerspec {
+   pub it_interval: timespec_unaligned,
+   pub it_value: timespec_unaligned,
+}
 
 #[inline(never)]
 pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize) {
    // Attempt to set a higher process priority, indicated by a negative number. -20 is the highest possible
    sys_call!(SYS_SETPRIORITY as isize, PRIO_PROCESS as isize, 0, -19);
-
-   // Initialize the DATE before launching workers
-   unsafe {
-      http_date::get_http_date(&mut HTTP_DATE.0);
-   }
 
    let num_cpu_cores = crate::util::get_num_logical_cpus();
    for core in 0..num_cpu_cores {
@@ -79,41 +84,31 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
          sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
          threaded_worker(port, cb, core as i32);
       });
+
+      // Delay so we 'for sure' setup listener sockets IN ORDER. Core 0 first, then core 1, etc
+      std::thread::sleep(std::time::Duration::from_millis(5));
    }
 
    {
-      // Update HTTP date every second
-
-      let sleep_time = http_date::timespec { tv_sec: 1, tv_nsec: 0 };
-      let sleep_remaining = http_date::timespec { tv_sec: 0, tv_nsec: 0 };
+      const SLEEP_TIME: http_date::timespec = http_date::timespec { tv_sec: 10000, tv_nsec: 0 };
       loop {
-         unsafe {
-            http_date::get_http_date(&mut HTTP_DATE.0);
-         }
-         sys_call!(SYS_NANOSLEEP as isize, &sleep_time as *const _ as isize, &sleep_remaining as *const _ as isize);
+         sys_call!(SYS_NANOSLEEP as isize, &SLEEP_TIME as *const _ as isize, 0);
       }
    }
 }
 
 #[inline(never)]
 fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize, cpu_core: i32) {
-   let (listener_fd, _, _) = net::get_listener_fd(port);
+   let (listener_fd, _, _) = net::get_listener_fd(port, cpu_core);
    net::setup_connection(listener_fd, cpu_core);
 
    let epfd = sys_call!(SYS_EPOLL_CREATE1 as isize, 0);
 
    // Add listener fd to epoll for monitoring
    {
-      let epoll_event_listener =
-         AlignedEpollEvent(epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
+      let epoll_event_listener = AlignedEpollEvent(epoll_event { data: epoll_data { fd: listener_fd as i32 }, events: EPOLLIN });
 
-      sys_call!(
-         SYS_EPOLL_CTL as isize,
-         epfd,
-         EPOLL_CTL_ADD as isize,
-         listener_fd,
-         &epoll_event_listener.0 as *const epoll_event as isize
-      );
+      sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, listener_fd, &epoll_event_listener.0 as *const epoll_event as isize);
    }
 
    let epoll_events: AlignedEpollEvents = unsafe { core::mem::zeroed() };
@@ -140,16 +135,31 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
    let mut resbuf: ResBufAligned = unsafe { core::mem::zeroed() };
    let resbuf_start_address = &mut resbuf.0[0] as *mut _ as isize;
 
+   // Add the timer to poll for monitoring
+   let timer_fd = sys_call!(SYS_TIMERFD_CREATE as isize, 1, net::O_NONBLOCK);
+   let unnecessary_buffer: i64 = 0;
+
+   {
+      let spec =
+         itimerspec { it_interval: timespec_unaligned { tv_sec: 1, tv_nsec: 0 }, it_value: timespec_unaligned { tv_sec: 1, tv_nsec: 0 } };
+      sys_call!(SYS_TIMERFD_SETTIME as isize, timer_fd, 0, &spec as *const _ as _, 0);
+      let epoll_event_timer = AlignedEpollEvent(epoll_event { data: epoll_data { fd: timer_fd as i32 }, events: EPOLLIN });
+
+      sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, timer_fd, &epoll_event_timer.0 as *const epoll_event as isize);
+   }
+
+   let mut local_date = AlignedHttpDate(http_date::get_buff_with_date());
+   http_date::get_http_date(&mut local_date.0);
+
    let mut epoll_wait_type = EPOLL_TIMEOUT_BLOCKING;
 
+   
+
    loop {
-      let num_incoming_events = sys_call!(
-         SYS_EPOLL_WAIT as isize,
-         epfd,
-         epoll_events_ptr,
-         MAX_EPOLL_EVENTS_RETURNED as isize,
-         epoll_wait_type
-      );
+      let mut test_once = true;
+
+      let num_incoming_events =
+         sys_call!(SYS_EPOLL_WAIT as isize, epfd, epoll_events_ptr, MAX_EPOLL_EVENTS_RETURNED as isize, epoll_wait_type);
 
       if num_incoming_events <= 0 {
          epoll_wait_type = EPOLL_TIMEOUT_BLOCKING;
@@ -164,29 +174,59 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
          let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
          let residual = unsafe { reqbuf_residual.get_unchecked_mut(cur_fd as usize) };
 
-         if cur_fd == listener_fd {
-            let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd, 0, 0);
+         if cur_fd == timer_fd {
+            sys_call!(SYS_READ as isize, timer_fd, &unnecessary_buffer as *const _ as _, 8);
+            http_date::get_http_date(&mut local_date.0);
+         } else if cur_fd == listener_fd {
+            let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd, 0, 0, 2000000 | 4000);
 
             if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
                *req_buf_cur_position = req_buf_start_address;
                *residual = 0;
+               //println!("before");
+               //net::debug_incoming_cpu(incoming_fd, listener_fd, cpu_core);
                net::setup_connection(incoming_fd, cpu_core);
+               //println!("after");
+               //net::debug_incoming_cpu(incoming_fd, listener_fd, cpu_core);
+
                saved_event.0.data.fd = incoming_fd as i32;
 
-               sys_call!(
-                  SYS_EPOLL_CTL as isize,
-                  epfd,
-                  EPOLL_CTL_ADD as isize,
-                  incoming_fd,
-                  &saved_event.0 as *const epoll_event as isize
-               );
+               sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, incoming_fd, &saved_event.0 as *const epoll_event as isize);
             } else {
                net::close_connection(epfd, cur_fd);
             }
          } else {
+
+            // let incoming_cpu: i32 = -1;
+            // let incoming_ret = sys_call!(
+            //    SYS_GETSOCKOPT as isize,
+            //    cur_fd,
+            //    SOL_SOCKET as isize,
+            //    SO_INCOMING_CPU as isize,
+            //    &incoming_cpu as *const _ as _,
+            //    &core::mem::size_of_val(&incoming_cpu) as *const _ as _
+            // );
+
+            // if incoming_cpu != cpu_core {
+            //    sys_call!(
+            //       SYS_SETSOCKOPT as isize,
+            //       cur_fd,
+            //       SOL_SOCKET as isize,
+            //       SO_INCOMING_CPU as isize,
+            //       &cpu_core as *const _ as _,
+            //       core::mem::size_of_val(&cpu_core) as isize
+            //    );
+
+            //    println!("set socket on core {} from {} to {}", cpu_core, incoming_cpu, cpu_core);
+            // }
+
+            
+
             let buffer_remaining = REQ_BUFF_SIZE as isize - (*req_buf_cur_position - req_buf_start_address);
 
+            
             let read = sys_call!(SYS_RECVFROM as isize, cur_fd, *req_buf_cur_position, buffer_remaining, 0, 0, 0);
+            //net::debug_incoming_cpu(cur_fd, listener_fd, cpu_core);
 
             if likely(read > 0) {
                let mut request_buffer_offset = 0;
@@ -219,7 +259,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                            path as *const u8,
                            path_len,
                            resbuf_start_address.add(response_buffer_filled_total) as *mut _,
-                           HTTP_DATE.0.as_ptr(),
+                           local_date.0.as_ptr(),
                         )
                      };
 
@@ -242,8 +282,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                   *residual += (read - request_buffer_offset) as usize;
                }
 
-               let wrote =
-                  sys_call!(SYS_SENDTO as isize, cur_fd, resbuf_start_address, response_buffer_filled_total, 0, 0, 0);
+               let wrote = sys_call!(SYS_SENDTO as isize, cur_fd, resbuf_start_address, response_buffer_filled_total, 0, 0, 0);
 
                if likely(wrote == response_buffer_filled_total) {
                } else if unlikely(-wrote == EAGAIN as isize || -wrote == EINTR as isize) {

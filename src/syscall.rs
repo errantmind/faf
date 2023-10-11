@@ -38,7 +38,7 @@ pub fn sys_call0(mut num: isize) -> isize {
          out("rcx") _,
          out("r11") _,
          lateout("rax") num,
-         options(nostack, preserves_flags));
+         options(nostack));
 
       num
    }
@@ -54,7 +54,7 @@ pub fn sys_call1(mut num: isize, arg1: isize) -> isize {
          out("rcx") _,
          out("r11") _,
          lateout("rax") num,
-         options(nostack, preserves_flags));
+         options(nostack));
       num
    }
 }
@@ -70,7 +70,7 @@ pub fn sys_call2(mut num: isize, arg1: isize, arg2: isize) -> isize {
          out("rcx") _,
          out("r11") _,
          lateout("rax") num,
-         options(nostack, preserves_flags));
+         options(nostack));
       num
    }
 }
@@ -87,7 +87,7 @@ pub fn sys_call3(mut num: isize, arg1: isize, arg2: isize, arg3: isize) -> isize
          out("rcx") _,
          out("r11") _,
          lateout("rax") num,
-         options(nostack, preserves_flags));
+         options(nostack));
       num
    }
 }
@@ -105,7 +105,7 @@ pub fn sys_call4(mut num: isize, arg1: isize, arg2: isize, arg3: isize, arg4: is
          out("rcx") _,
          out("r11") _,
          lateout("rax") num,
-         options(nostack, preserves_flags));
+         options(nostack));
       num
    }
 }
@@ -124,7 +124,7 @@ pub fn sys_call5(mut num: isize, arg1: isize, arg2: isize, arg3: isize, arg4: is
          out("rcx") _,
          out("r11") _,
          lateout("rax") num,
-         options(nostack, preserves_flags));
+         options(nostack));
       num
    }
 }
@@ -152,7 +152,7 @@ pub fn sys_call6(
          out("rcx") _,
          out("r11") _,
          lateout("rax") num,
-         options(nostack, preserves_flags));
+         options(nostack));
       num
    }
 }
