@@ -67,10 +67,19 @@ struct itimerspec {
    pub it_value: timespec_unaligned,
 }
 
+
+static mut HTTP_DATE: AlignedHttpDate = AlignedHttpDate(http_date::get_buff_with_date());
+
+
 #[inline(never)]
 pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const u8) -> usize) {
    // Attempt to set a higher process priority, indicated by a negative number. -20 is the highest possible
    sys_call!(SYS_SETPRIORITY as isize, PRIO_PROCESS as isize, 0, -19);
+
+   // Initialize the DATE before launching workers
+   unsafe {
+      http_date::get_http_date(&mut HTTP_DATE.0);
+   }
 
    let num_cpu_cores = crate::util::get_num_logical_cpus();
    for core in 0..num_cpu_cores {
@@ -90,8 +99,11 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
    }
 
    {
-      const SLEEP_TIME: http_date::timespec = http_date::timespec { tv_sec: 10000, tv_nsec: 0 };
+      const SLEEP_TIME: http_date::timespec = http_date::timespec { tv_sec: 1, tv_nsec: 0 };
       loop {
+         unsafe {
+            http_date::get_http_date(&mut HTTP_DATE.0);
+         }
          sys_call!(SYS_NANOSLEEP as isize, &SLEEP_TIME as *const _ as isize, 0);
       }
    }
@@ -148,15 +160,10 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
       sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, timer_fd, &epoll_event_timer.0 as *const epoll_event as isize);
    }
 
-   let mut local_date = AlignedHttpDate(http_date::get_buff_with_date());
-   http_date::get_http_date(&mut local_date.0);
 
    let mut epoll_wait_type = EPOLL_TIMEOUT_BLOCKING;
 
-   
-
-   loop {
-      let mut test_once = true;
+      loop {
 
       let num_incoming_events =
          sys_call!(SYS_EPOLL_WAIT as isize, epfd, epoll_events_ptr, MAX_EPOLL_EVENTS_RETURNED as isize, epoll_wait_type);
@@ -174,10 +181,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
          let req_buf_cur_position = unsafe { reqbuf_cur_addr.get_unchecked_mut(cur_fd as usize) };
          let residual = unsafe { reqbuf_residual.get_unchecked_mut(cur_fd as usize) };
 
-         if cur_fd == timer_fd {
-            sys_call!(SYS_READ as isize, timer_fd, &unnecessary_buffer as *const _ as _, 8);
-            http_date::get_http_date(&mut local_date.0);
-         } else if cur_fd == listener_fd {
+         if cur_fd == listener_fd {
             let incoming_fd = sys_call!(SYS_ACCEPT as isize, listener_fd, 0, 0, 2000000 | 4000);
 
             if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
@@ -259,7 +263,7 @@ fn threaded_worker(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8
                            path as *const u8,
                            path_len,
                            resbuf_start_address.add(response_buffer_filled_total) as *mut _,
-                           local_date.0.as_ptr(),
+                           HTTP_DATE.0.as_ptr(),
                         )
                      };
 
