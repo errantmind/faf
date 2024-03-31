@@ -174,7 +174,7 @@ pub fn get_listener_fd(port: u16, cpu_core: i32) -> (isize, sockaddr_in, u32) {
       );
 
       let mut code: [sock_filter; 2] = [
-         sock_filter { code: BPF_LD | BPF_W | BPF_ABS, jt: 0, jf: 0, k: cpu_core as u32 },
+         sock_filter { code: BPF_LD | BPF_W | BPF_ABS, jt: 0, jf: 0, k: (SK_D_FD_SD) as u32 },
          sock_filter { code: BPF_RET | BPF_A, jt: 0, jf: 0, k: 0 },
       ];
       let prog = sock_fprog { len: code.len() as u16, filter: code.as_mut_ptr() };
