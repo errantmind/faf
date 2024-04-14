@@ -54,7 +54,7 @@ pub struct sock_filter {
    pub code: u16,
    pub jt: u8,
    pub jf: u8,
-   pub k: i32,
+   pub k: u32,
 }
 
 #[repr(C)]
@@ -247,7 +247,7 @@ pub fn attach_reuseport_cbpf(fd: isize) {
    const SKF_AD_CPU: i32 = 36;
 
    let mut code: [sock_filter; 2] = [
-      sock_filter { code: BPF_LD | BPF_W | BPF_ABS, jt: 0, jf: 0, k: (SKF_AD_OFF + SKF_AD_CPU) },
+      sock_filter { code: BPF_LD | BPF_W | BPF_ABS, jt: 0, jf: 0, k: (SKF_AD_OFF + SKF_AD_CPU) as u32 },
       sock_filter { code: BPF_RET | BPF_A, jt: 0, jf: 0, k: 0 },
    ];
 

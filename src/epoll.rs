@@ -79,7 +79,9 @@ pub fn go(port: u16, cb: fn(*const u8, usize, *const u8, usize, *mut u8, *const 
          sys_call!(SYS_UNSHARE as isize, CLONE_FILES as isize);
          crate::util::set_current_thread_cpu_affinity_to(core);
          threaded_worker(port, cb, core as i32, num_cpu_cores);
-      });      
+      });
+      // sleep to ensure workers are initialized in sequence. TODO: refactor to use a semaphore instead
+      std::thread::sleep(std::time::Duration::from_millis(5));
    }
 
    {
@@ -105,12 +107,10 @@ fn threaded_worker(
 
    {
       // Attach REUSEPORT_CBPF for greater locality
-
-      // This increment is atomic on x64 systems.
       unsafe { NUM_WORKERS_INITED += 1 }
       if cpu_core == 0 {
          // attach after all workers are initiated. Only need to attach once and it will apply to all the workers' listener sockets.
-         const SLEEP_DURATION: core::time::Duration = std::time::Duration::from_nanos(1);
+         const SLEEP_DURATION: core::time::Duration = std::time::Duration::from_micros(1);
          while unsafe { NUM_WORKERS_INITED } < num_cpu_cores {
             // With no sleep, the value in NUM_WORKERS_INITED will never be rechecked.. for some reason beyond me.
             std::thread::sleep(SLEEP_DURATION);
