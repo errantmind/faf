@@ -69,7 +69,7 @@ pub const O_NONBLOCK: isize = 2048;
 const F_SETFL: isize = 4;
 
 #[inline]
-pub fn get_listener_fd(port: u16, cpu_core: i32) -> (isize, sockaddr_in, u32) {
+pub fn get_listener_fd(port: u16) -> (isize, sockaddr_in, u32) {
    const _OPTVAL_TCPDEFERACCEPT_TIMEOUT: isize = 10;
    const OPTVAL_TCPFASTOPEN_QUEUE_LEN: isize = MAX_CONN as isize;
    const AF_INET: i32 = 2;
@@ -160,7 +160,7 @@ pub fn get_listener_fd(port: u16, cpu_core: i32) -> (isize, sockaddr_in, u32) {
 }
 
 #[inline]
-pub fn setup_connection(fd: isize, core: i32) {
+pub fn setup_connection(fd: isize) {
    //Doesn't help with throughput, just latency per request, and may actually reduce throughput.
    //May be Useful for this test. I'm not entirely convinced though
    sys_call!(
@@ -262,7 +262,7 @@ pub fn attach_reuseport_cbpf(fd: isize) {
       core::mem::size_of::<sock_fprog>() as isize
    );
 
-   println!("SO_ATTACH_REUSEPORT_CBPF ret: {}, size = {}", ret, core::mem::size_of::<sock_fprog>() as isize);
+   //println!("SO_ATTACH_REUSEPORT_CBPF ret: {}, size = {}", ret, core::mem::size_of::<sock_fprog>() as isize);
 }
 
 #[inline(always)]

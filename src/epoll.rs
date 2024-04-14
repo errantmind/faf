@@ -102,8 +102,8 @@ fn threaded_worker(
    cpu_core: i32,
    num_cpu_cores: usize,
 ) {
-   let (listener_fd, _, _) = net::get_listener_fd(port, cpu_core);
-   net::setup_connection(listener_fd, cpu_core);
+   let (listener_fd, _, _) = net::get_listener_fd(port);
+   net::setup_connection(listener_fd);
 
    {
       // Attach REUSEPORT_CBPF for greater locality
@@ -176,7 +176,7 @@ fn threaded_worker(
             if likely(incoming_fd >= 0 && incoming_fd < MAX_CONN as isize) {
                *req_buf_cur_position = req_buf_start_address;
                *residual = 0;
-               net::setup_connection(incoming_fd, cpu_core);
+               net::setup_connection(incoming_fd);
                saved_event.0.data.fd = incoming_fd as i32;
 
                sys_call!(SYS_EPOLL_CTL as isize, epfd, EPOLL_CTL_ADD as isize, incoming_fd, &saved_event.0 as *const epoll_event as isize);
